@@ -86,6 +86,7 @@ class MainActivity : Activity() {
     private lateinit var recorder: MicRecorder
     private lateinit var wakeListener: WakeWordListener
     private lateinit var kitchenTimer: KitchenTimer
+    private lateinit var tts: TextToSpeech
 
     // Timer alarm: beeps every RING_INTERVAL_MS until dismissed (voice, tap on the timer, or timeout).
     private var ringing = false
@@ -150,6 +151,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         recorder = MicRecorder(assets)
         wakeListener = WakeWordListener(assets)
+        tts = TextToSpeech(applicationContext)
         kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging() }
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
         window.statusBarColor = Color.BLACK
@@ -199,6 +201,7 @@ class MainActivity : Activity() {
         recorder.release()
         wakeListener.stop()
         wakeListener.release()
+        tts.release()
         artworkExecutor.shutdownNow()
         sttExecutor.execute { stt?.release(); stt = null }
         sttExecutor.shutdown()
@@ -436,13 +439,16 @@ class MainActivity : Activity() {
             is EchoIntent.TimerCreate -> {
                 kitchenTimer.start(intent.seconds)
                 renderTimer()
-                statusView.text = "Timer impostato: ${describeDuration(intent.seconds)}"
+                reply(Replies.timerSet(intent.seconds))
             }
             EchoIntent.TimerCancel -> {
                 val had = dismissTimer()
-                statusView.text = if (had) "Timer annullato" else "Nessun timer attivo"
+                reply(if (had) Replies.TIMER_CANCELLED else Replies.NO_TIMER)
             }
-            EchoIntent.Time -> statusView.text = "Sono le ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.ITALY).format(java.util.Date())}"
+            EchoIntent.Time -> {
+                val now = java.util.Calendar.getInstance()
+                reply(Replies.time(now.get(java.util.Calendar.HOUR_OF_DAY), now.get(java.util.Calendar.MINUTE)))
+            }
             // Typed text falls back to a plain search; a voice transcript must be a real command.
             null -> if (fromVoice) {
                 statusView.text = "Non ho capito: “$text” ($detail)"
@@ -525,7 +531,9 @@ class MainActivity : Activity() {
     }
 
     /** Back to idle: put the music back if the command did not take over playback, then listen again. */
-    private fun endSession(executed: EchoIntent?) {
+    private fun endSession(executed: EchoIntent?) = whenSpeechDone { finishSession(executed) }
+
+    private fun finishSession(executed: EchoIntent?) {
         voiceBusy = false
         speakButton.text = "Parla"
         speakButton.isEnabled = controller != null
@@ -625,29 +633,48 @@ class MainActivity : Activity() {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val clamped = percent.coerceIn(0, 100)
         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(clamped * max / 100f), 0)
-        statusView.text = "Volume ${volumePercent()}%"
+        reply(Replies.volume(volumePercent()))
+    }
+
+    // ---- Spoken answers -----------------------------------------------------
+
+    private var speakingCount = 0
+    private var afterSpeech: (() -> Unit)? = null
+
+    /** Shows [text] and says it out loud. */
+    private fun reply(text: String) {
+        statusView.text = text
+        speak(text)
+    }
+
+    private fun speak(text: String, then: () -> Unit = {}) {
+        speakingCount++
+        wakeListener.stop() // never let the wake word detector hear our own voice
+        tts.speak(text) {
+            speakingCount--
+            then()
+            if (speakingCount == 0) {
+                afterSpeech?.let { afterSpeech = null; it() }
+                startWake() // no-op while a voice session is still running
+            }
+        }
+    }
+
+    /** Runs [block] now, or as soon as the current speech has finished. */
+    private fun whenSpeechDone(block: () -> Unit) {
+        if (speakingCount == 0) block() else afterSpeech = block
     }
 
     // ---- Timer ------------------------------------------------------------
 
-    private fun describeDuration(seconds: Int): String {
-        val h = seconds / 3600
-        val m = seconds % 3600 / 60
-        val sec = seconds % 60
-        return listOfNotNull(
-            if (h > 0) "$h ${if (h == 1) "ora" else "ore"}" else null,
-            if (m > 0) "$m ${if (m == 1) "minuto" else "minuti"}" else null,
-            if (sec > 0) "$sec ${if (sec == 1) "secondo" else "secondi"}" else null,
-        ).joinToString(" e ")
-    }
-
     private fun startRinging() {
         ringing = true
         ringCount = 0
-        statusView.text = "Timer scaduto"
+        statusView.text = Replies.TIMER_DONE
         renderTimer()
         mainHandler.removeCallbacks(ringTick)
-        mainHandler.post(ringTick)
+        // Say it once, then the beeps keep going until dismissed.
+        speak(Replies.TIMER_DONE) { if (ringing) mainHandler.post(ringTick) }
     }
 
     private fun stopRinging() {

@@ -1,4 +1,4 @@
-# Echo Home v0.2
+# Echo Home v0.3
 
 Primo prototipo Android per controllare Meld da una UI esterna tramite AndroidX Media3.
 
@@ -81,10 +81,20 @@ Metterli prima di compilare:
 | `sherpa-onnx-1.13.8.aar` | release `v1.13.8` di `k2-fsa/sherpa-onnx` | `app/libs/` |
 | Whisper base: `base-encoder.int8.onnx`, `base-decoder.int8.onnx`, `base-tokens.txt` | release `asr-models`, `sherpa-onnx-whisper-base.tar.bz2` | `app/src/main/assets/whisper-base/` |
 | `silero_vad_v5.onnx` | release `asr-models` | `app/src/main/assets/silero-vad/` |
+| TTS: `it_IT-paola-medium.onnx`, `tokens.txt`, `espeak-ng-data/` (solo italiano, ~1,7 MB) | release `tts-models`, `vits-piper-it_IT-paola-medium-int8.tar.bz2`; dall'`espeak-ng-data` completo tenere `intonations phondata phondata-manifest phonindex phontab it_dict lang/ voices/` | `app/src/main/assets/tts/` |
 | KWS: `encoder/decoder/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx`, `tokens.txt` | release `kws-models`, `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2` (la variante `-mobile` NON funziona) | `app/src/main/assets/kws/` |
 
-L'APK debug pesa circa 300 MB, quasi tutto per Whisper base.
+L'APK debug pesa circa 250 MB, quasi tutto per Whisper base.
 
 ### Cosa è stato provato e cosa no
 - Su audio pulito (voce sintetica) Whisper base riconosce correttamente pausa/riprendi/prossima/precedente; «Hey Jarvis» scatta su 4 registrazioni su 7 senza falsi positivi su 8 frasi diverse.
 - Nell'emulatore l'audio passa dal microfono del Mac e arriva molto degradato: l'accuratezza reale e la wake word con musica in riproduzione vanno misurate **sull'Echo**.
+
+## V0.3 (in corso)
+
+Fatto: volume, ora, timer, risposte parlate. Mancano: meteo (San Giuliano Milanese), wake word «Echo», UI smart display.
+
+- **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `annulla timer`.
+- **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.
+- **Timer**: uno solo; la scadenza è salvata, quindi suona anche se l'app era chiusa. Alla scadenza dice «Il timer è scaduto» e poi suona fino a quando non lo fermi (tocco o «annulla timer»).
+- **Test veloce da terminale** (solo build debug): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.
