@@ -480,7 +480,7 @@ class MainActivity : Activity() {
         checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
     private fun renderWakeButton() {
-        wakeButton.text = if (wakeEnabled) "Hey Jarvis: ON" else "Hey Jarvis: OFF"
+        wakeButton.text = if (wakeEnabled) "Wake word: ON" else "Wake word: OFF"
     }
 
     private fun toggleWake() {

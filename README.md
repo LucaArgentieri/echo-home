@@ -63,7 +63,7 @@ Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo s
 
 `Hey Jarvis` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
 
-- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8, parola chiave in `keywords.txt`). Pulsante `Hey Jarvis: ON/OFF` (di default OFF: il microfono si apre solo se lo attivi). Si ferma quando l'app non è in primo piano.
+- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Hey Jarvis» e «Hey Echo»** sono attive insieme (una riga ciascuna in `keywords.txt`; punteggio 2.0, soglia 0.2). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Pulsante `Wake word: ON/OFF` (di default OFF: il microfono si apre solo se lo attivi). Si ferma quando l'app non è in primo piano.
 - **VAD**: Silero v5 (`assets/silero-vad`). Fine frase dopo 0,7 s di silenzio; massimo 8 s; 5 s senza parlato = annulla.
 - **STT**: Whisper base int8 in italiano (`assets/whisper-base`), offline. Elabora solo la parte parlata.
 - **Intent**: `IntentParser.kt`, regex + tolleranza di 1 carattere su verbi e comandi brevi. Test: `./gradlew testDebugUnitTest`.
