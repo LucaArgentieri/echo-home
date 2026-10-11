@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Voice commands: audio is processed in RAM only, never stored or sent anywhere. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Only to download cover art from the URL Meld publishes. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Android 11+ package visibility: Echo Home must be able to discover Meld. -->
+    <queries>
+        <package android:name="com.meld.app" />
+        <package android:name="com.meld.app.debug" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:label="Echo Home"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

@@ -1,0 +1,90 @@
+# Echo Home v0.2
+
+Primo prototipo Android per controllare Meld da una UI esterna tramite AndroidX Media3.
+
+## Obiettivo di questa versione
+
+Validare una sola cosa prima di aggiungere wake word e speech-to-text:
+
+1. Echo Home si connette al `MediaLibraryService` esportato da Meld.
+2. Una query testuale viene inviata a Meld come `MediaItem.RequestMetadata.searchQuery`.
+3. Meld risolve la query con la propria pipeline di ricerca/voice-search e avvia la riproduzione.
+4. Echo Home può inviare pausa/riprendi, next e previous e leggere titolo, artista, cover e posizione.
+
+## Requisiti
+
+- Android Studio recente
+- JDK 17+
+- Android SDK 36 (cmdline-tools, platform 36, build-tools)
+- Un device/emulatore Android 8+; il target reale sarà LineageOS 18.1 / Android 11 sull'Echo Show 5 2nd gen
+- Meld release installato con package `com.meld.app`
+
+## Build APK debug
+
+```
+./gradlew assembleDebug
+```
+
+Output: `app/build/outputs/apk/debug/app-debug.apk` (`adb install -r`).
+
+## Test rapido
+
+1. Apri questa cartella in Android Studio.
+2. Attendi il Gradle Sync.
+3. Installa Meld sullo stesso device/emulatore e avvialo almeno una volta.
+4. Esegui Echo Home.
+5. Lo stato deve diventare `Meld · connesso`.
+6. Scrivi ad esempio `Radiohead` e premi `Cerca e riproduci`.
+7. Verifica `Pausa`/`Riprendi`, `Next`, `Prev`, cover e titolo/artista.
+8. Chiudi Meld a forza: Echo Home deve tornare a «non connesso» e riconnettersi.
+
+Nota: `INTERNET` serve solo per scaricare la cover dall'URL pubblicato da Meld.
+
+## Integrazione Meld usata
+
+- Package APK release: `com.meld.app` (la build debug di Meld usa `com.meld.app.debug`, provata come secondo tentativo)
+- Service class: `com.metrolist.music.playback.MusicService`
+- Protocollo: AndroidX Media3 `MediaController` → `MediaLibraryService`
+- Ricerca: `MediaItem.RequestMetadata.searchQuery`
+
+## Cosa NON c'è ancora
+
+- meteo
+- timer
+- launcher/kiosk mode
+
+Queste funzionalità vengono aggiunte solo dopo aver validato la comunicazione Echo Home ↔ Meld.
+
+## Gradle wrapper su macOS
+
+Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo script scarica **solo** il wrapper JAR ufficiale Gradle 8.13 da `gradle/gradle`, ne verifica SHA-256 e poi Gradle verifica anche lo SHA-256 della distribuzione 8.13 prima dell'uso.
+
+## V0.2: pipeline vocale
+
+`Hey Jarvis` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
+
+- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8, parola chiave in `keywords.txt`). Pulsante `Hey Jarvis: ON/OFF` (di default OFF: il microfono si apre solo se lo attivi). Si ferma quando l'app non è in primo piano.
+- **VAD**: Silero v5 (`assets/silero-vad`). Fine frase dopo 0,7 s di silenzio; massimo 8 s; 5 s senza parlato = annulla.
+- **STT**: Whisper base int8 in italiano (`assets/whisper-base`), offline. Elabora solo la parte parlata.
+- **Intent**: `IntentParser.kt`, regex + tolleranza di 1 carattere su verbi e comandi brevi. Test: `./gradlew testDebugUnitTest`.
+- **Musica**: dopo la wake word Meld va in pausa; riprende da sola se il comando non è «pausa» o una ricerca.
+- Il pulsante `Parla` salta la wake word.
+
+### Privacy del microfono
+Il rilevatore legge 100 ms alla volta in un buffer riusato e li scarta; nessun file, nessun log dell'audio, nessuna rete. La registrazione del comando vive solo in RAM e viene azzerata dopo la trascrizione. Il log contiene solo l'evento «wake word detected».
+
+### File grandi (non nel repository)
+Metterli prima di compilare:
+
+| Cosa | Da dove | Dove |
+|---|---|---|
+| `sherpa-onnx-1.13.8.aar` | release `v1.13.8` di `k2-fsa/sherpa-onnx` | `app/libs/` |
+| Whisper base: `base-encoder.int8.onnx`, `base-decoder.int8.onnx`, `base-tokens.txt` | release `asr-models`, `sherpa-onnx-whisper-base.tar.bz2` | `app/src/main/assets/whisper-base/` |
+| `silero_vad_v5.onnx` | release `asr-models` | `app/src/main/assets/silero-vad/` |
+| KWS: `encoder/decoder/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx`, `tokens.txt` | release `kws-models`, `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2` (la variante `-mobile` NON funziona) | `app/src/main/assets/kws/` |
+
+L'APK debug pesa circa 300 MB, quasi tutto per Whisper base.
+
+### Cosa è stato provato e cosa no
+- Su audio pulito (voce sintetica) Whisper base riconosce correttamente pausa/riprendi/prossima/precedente; «Hey Jarvis» scatta su 4 registrazioni su 7 senza falsi positivi su 8 frasi diverse.
+- Nell'emulatore l'audio passa dal microfono del Mac e arriva molto degradato: l'accuratezza reale e la wake word con musica in riproduzione vanno misurate **sull'Echo**.

@@ -1,0 +1,12 @@
+.gradle/
+.idea/
+local.properties
+**/build/
+*.iml
+.DS_Store
+app/libs/*.aar
+app/src/main/assets/whisper-base/
+app/src/main/assets/kws/*.onnx
+app/src/main/assets/kws/tokens.txt
+app/src/main/assets/silero-vad/
+gradle/wrapper/gradle-wrapper.jar
