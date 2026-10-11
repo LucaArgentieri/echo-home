@@ -155,4 +155,20 @@ class IntentParserTest {
     @Test fun weatherDoesNotStealMusic() {
         assertEquals(search("Meteo Is Cool"), IntentParser.parse("metti Meteo Is Cool"))
     }
+
+    @Test
+    fun quickWins() {
+        assertEquals(EchoIntent.Date, IntentParser.parse("che giorno è oggi"))
+        assertEquals(EchoIntent.Date, IntentParser.parse("Che data è?"))
+        assertEquals(EchoIntent.TimerRemaining, IntentParser.parse("quanto manca al timer"))
+        assertEquals(EchoIntent.TimerRemaining, IntentParser.parse("quanto manca"))
+        assertEquals(EchoIntent.VolumeUnmute, IntentParser.parse("riattiva l'audio"))
+        assertEquals(EchoIntent.VolumeUnmute, IntentParser.parse("riattiva audio"))
+        assertEquals(EchoIntent.VolumeSet(0), IntentParser.parse("muto"))
+        assertEquals(EchoIntent.MusicShuffle(true), IntentParser.parse("mischia"))
+        assertEquals(EchoIntent.MusicShuffle(false), IntentParser.parse("disattiva la riproduzione casuale"))
+        assertEquals(EchoIntent.MusicRepeat(true), IntentParser.parse("ripeti brano"))
+        assertEquals(EchoIntent.MusicRepeat(false), IntentParser.parse("non ripetere"))
+        assertEquals(EchoIntent.MusicSearch("Radiohead"), IntentParser.parse("metti Radiohead"))
+    }
 }

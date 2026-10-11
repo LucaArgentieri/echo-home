@@ -28,4 +28,12 @@ class RepliesTest {
         assertEquals("Timer impostato per 1 minuto e 30 secondi.", Replies.timerSet(90))
         assertEquals("Timer impostato per 45 secondi.", Replies.timerSet(45))
     }
+
+    @Test
+    fun dateAndRemaining() {
+        assertEquals("Oggi è domenica 11 ottobre.", Replies.date("domenica", 11, "ottobre"))
+        assertEquals("Oggi è lunedì primo novembre.", Replies.date("lunedì", 1, "novembre"))
+        assertEquals("Mancano 3 minuti e 20 secondi.", Replies.timerRemaining(200))
+        assertEquals("Manca 1 minuto.", Replies.timerRemaining(60))
+    }
 }

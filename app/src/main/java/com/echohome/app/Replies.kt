@@ -16,6 +16,18 @@ object Replies {
         }
     }
 
+    /** weekday "domenica", month "ottobre". */
+    fun date(weekday: String, day: Int, month: String): String =
+        "Oggi è $weekday ${if (day == 1) "primo" else day.toString()} $month."
+
+    fun timerRemaining(seconds: Int): String {
+        val singular = seconds == 1 || seconds == 60 || seconds == 3600
+        return "${if (singular) "Manca" else "Mancano"} ${describeDuration(seconds)}."
+    }
+
+    fun shuffle(enabled: Boolean) = if (enabled) "Riproduzione casuale attiva." else "Riproduzione casuale disattivata."
+    fun repeat(enabled: Boolean) = if (enabled) "Ripeto il brano." else "Ripetizione disattivata."
+
     fun volume(percent: Int): String = when (percent) {
         0 -> "Volume azzerato."
         100 -> "Volume al massimo."

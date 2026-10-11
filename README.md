@@ -94,7 +94,7 @@ L'APK debug pesa circa 250 MB, quasi tutto per Whisper base.
 
 Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Hey Jarvis»/«Hey Echo», UI base da smart display. Idee future: issue #1.
 
-- **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `annulla timer`.
+- **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `annulla timer` / `quanto manca al timer`, `che giorno è`, `muto` / `riattiva audio`, `mischia` / `non mischiare`, `ripeti brano` / `non ripetere`. Un tocco sull'indicatore mentre parla azzera la voce.
 - **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.
 - **Timer**: uno solo; la scadenza è salvata, quindi suona anche se l'app era chiusa. Alla scadenza dice «Il timer è scaduto» e poi suona fino a quando non lo fermi (tocco o «annulla timer»).
 - **Meteo** (Open-Meteo, senza chiave): fisso su San Giuliano Milanese. `che tempo fa` → temperatura e condizioni adesso, massima/minima di oggi. `che tempo farà domani` → minima, massima, condizioni e probabilità di pioggia **per ognuna delle 24 ore** (tabella a schermo; a voce un riassunto con le fasce a rischio, dal 40%). Unica chiamata di rete dell'app (`api.open-meteo.com`), con le sole coordinate della città; risultato in cache per 10 minuti e, se la rete manca, si usa l'ultimo dato.
@@ -102,6 +102,7 @@ Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Hey Jarvis»/«H
 
 ### UI smart display
 Schermata unica, nera e minimale, pensata per 960×480 (Echo Show 5), a schermo intero e sempre accesa mentre l'app è in primo piano.
+- Di notte (23–6) lo schermo è attenuato e il layout si sposta di pochi pixel ogni ora (anti burn-in).
 - In alto ora grande (con il timer accanto, se attivo) e a destra temperatura e condizioni; il meteo si aggiorna ogni 30 minuti (tocco = aggiorna ora).
 - Al centro giorno e data; sotto copertina, titolo, artista, tempo e controlli ◀ ▶ del player.
 - In basso a sinistra la riga dei messaggi (risposte, errori, «Meld non connesso»); a destra l'indicatore dell'assistente: `○` pronto, `● Ti ascolto…`, `◌ Elaboro…`. **Tocco = ascolto manuale** (e ferma l'ascolto in corso); **pressione lunga = wake word on/off** (`○` grigio = spenta).

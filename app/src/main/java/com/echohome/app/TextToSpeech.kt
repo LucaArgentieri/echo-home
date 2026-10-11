@@ -37,7 +37,7 @@ class TextToSpeech(private val context: Context) {
                 val started = System.nanoTime()
                 val tts = engine ?: createEngine().also { engine = it }
                 val loaded = System.nanoTime()
-                val audio = tts.generate(text, 0, 1.0f)
+                val audio = tts.generate(pronounceable(text), 0, 1.0f)
                 val generated = System.nanoTime()
                 // Timings only (for tuning on the real device): never the text or the audio.
                 Log.i("EchoHome", "tts: load ${(loaded - started) / 1_000_000} ms, " +
@@ -50,6 +50,9 @@ class TextToSpeech(private val context: Context) {
             mainHandler.post(onDone)
         }
     }
+
+    /** The Italian voice reads "timer" letter by letter; spell it the way it sounds. */
+    private fun pronounceable(text: String) = text.replace(Regex("\\btimer\\b", RegexOption.IGNORE_CASE), "taimer")
 
     /** Cuts the current speech short. */
     fun stop() {

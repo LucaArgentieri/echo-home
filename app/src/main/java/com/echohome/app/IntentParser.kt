@@ -10,7 +10,12 @@ sealed interface EchoIntent {
     data object VolumeUp : EchoIntent
     data object VolumeDown : EchoIntent
     data class VolumeSet(val percent: Int) : EchoIntent
+    data object VolumeUnmute : EchoIntent
     data object Time : EchoIntent
+    data object Date : EchoIntent
+    data class MusicShuffle(val enabled: Boolean) : EchoIntent
+    data class MusicRepeat(val enabled: Boolean) : EchoIntent
+    data object TimerRemaining : EchoIntent
     data object WeatherNow : EchoIntent
     data object WeatherTomorrow : EchoIntent
     data class TimerCreate(val seconds: Int) : EchoIntent
@@ -35,6 +40,7 @@ object IntentParser {
     private val volumeDown = rx("(?:abbassa|diminuisci|riduci)(?: il)?(?: volume)?|volume (?:giù|basso|più basso)|più piano|(?:metti|fai) (?:più piano|il volume più basso)")
     private val volumeMax = rx("(?:metti )?(?:il )?volume (?:al )?massimo")
     private val volumeMute = rx("(?:metti )?(?:il )?volume (?:al )?minimo|silenzio|muto")
+    private val volumeUnmute = rx("(?:riattiva|ripristina|rimetti)(?: l'| il)? ?(?:audio|volume)|(?:togli|disattiva) (?:il )?(?:muto|silenzio)")
     private val volumeSet = rx("(?:(?:imposta|metti|porta|regola)(?: il)? )?volume (?:(?:al|a|su) )?(.+?)(?: ?%| per cento)?")
     private val timerStart = Regex(
         "^(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?timer(?: di| per| da)?\\s+(.+)$",
@@ -50,6 +56,12 @@ object IntentParser {
         "(?:che tempo (?:fa|c'è)(?: adesso| ora| oggi| in questo momento)?|(?:com'è|come è|dimmi) (?:il )?(?:tempo|meteo)(?: oggi| adesso| ora)?|" +
             "meteo(?: oggi| adesso)?|previsioni(?: del tempo)?|piove(?: adesso| ora)?)",
     )
+    private val date = rx("(?:che|quale) (?:giorno|data) (?:è|e)(?: oggi)?|(?:dimmi )?(?:la )?data(?: di oggi)?|che giorno è oggi")
+    private val timerRemaining = rx("quanto (?:tempo )?(?:manca|resta|rimane)(?: al| del| per il)?(?: timer)?|a che punto è il timer")
+    private val shuffleOn = rx("(?:attiva )?(?:la )?(?:riproduzione |modalità )?(?:casuale|shuffle)|mischia(?: i brani| la musica)?")
+    private val shuffleOff = rx("(?:disattiva|togli|spegni) (?:la )?(?:riproduzione |modalità )?(?:casuale|shuffle)|non mischiare")
+    private val repeatOn = rx("ripeti(?: questo| il)?(?: brano| canzone)?|(?:attiva )?(?:la )?ripetizione")
+    private val repeatOff = rx("non ripetere(?: il brano)?|(?:disattiva|togli) (?:la )?ripetizione")
     private val time = rx("(?:che|quale) (?:ore sono|ora è|ora e|ora)|dimmi (?:l'ora|che ore sono)|l'ora|ora")
 
     // "metti i Radiohead", "metti su Wish You Were Here", "fai partire le ...", "suona ..."
@@ -98,6 +110,7 @@ object IntentParser {
         // Volume and time come before the generic "metti ..." search ("metti il volume a 40").
         volumeMax.matches(cleaned) -> EchoIntent.VolumeSet(100)
         volumeMute.matches(cleaned) -> EchoIntent.VolumeSet(0)
+        volumeUnmute.matches(cleaned) -> EchoIntent.VolumeUnmute
         volumeUp.matches(cleaned) -> EchoIntent.VolumeUp
         volumeDown.matches(cleaned) -> EchoIntent.VolumeDown
         volumeSet.matchEntire(cleaned)?.groupValues?.get(1)?.let { parseNumber(it) } != null ->
@@ -105,6 +118,12 @@ object IntentParser {
         weatherTomorrow.matches(cleaned) -> EchoIntent.WeatherTomorrow
         weatherNow.matches(cleaned) -> EchoIntent.WeatherNow
         time.matches(cleaned) -> EchoIntent.Time
+        date.matches(cleaned) -> EchoIntent.Date
+        timerRemaining.matches(cleaned) -> EchoIntent.TimerRemaining
+        shuffleOff.matches(cleaned) -> EchoIntent.MusicShuffle(false)
+        shuffleOn.matches(cleaned) -> EchoIntent.MusicShuffle(true)
+        repeatOff.matches(cleaned) -> EchoIntent.MusicRepeat(false)
+        repeatOn.matches(cleaned) -> EchoIntent.MusicRepeat(true)
         pause.matches(cleaned) -> EchoIntent.MusicPause
         resume.matches(cleaned) -> EchoIntent.MusicResume
         next.matches(cleaned) -> EchoIntent.MusicNext

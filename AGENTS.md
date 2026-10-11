@@ -33,7 +33,7 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 | File | Role |
 |---|---|
 | `MainActivity.kt` | The only Activity (`singleTask`, landscape, immersive). Builds the dashboard in code (`buildUi()`), connects to Meld, orchestrates the voice session, executes intents. ~1000 lines: grows by section (`// ----` headers). |
-| `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music, volume, time, timer, weather. Returns `null` for unknown text. |
+| `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music (incl. shuffle/repeat), volume (incl. unmute), time, date, timer (incl. remaining), weather. Returns `null` for unknown text. |
 | `Replies.kt` | Pure Kotlin. Italian wording for answers; `describeDuration`, `rainSummary`, `rainTable`, WMO weather-code text. |
 | `Weather.kt` | `WeatherClient` (Open-Meteo, **fixed to San Giuliano Milanese**, no key) + `WeatherParser` (org.json). |
 | `KitchenTimer.kt` | One countdown; deadline stored as wall-clock in SharedPreferences, re-armed on start. |
@@ -53,7 +53,7 @@ Gotchas learned: the sherpa KWS `-mobile` model fails (Reshape error) — use th
 ## Build, test, run
 Toolchain is pinned in `mise.toml` (JDK 17 + Android SDK). In a new shell: `eval "$(mise env)"`.
 ```
-./gradlew testDebugUnitTest assembleDebug        # 28 JVM tests + debug APK
+./gradlew testDebugUnitTest assembleDebug        # JVM tests + debug APK
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 Unit tests cover the parser, replies and weather parsing (`app/src/test/`; org.json is a test dependency because android.jar's is a stub). Everything else is verified on the emulator (AVD `echo30`, Android 11 arm64, started with `-allow-host-audio`).

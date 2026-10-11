@@ -383,6 +383,7 @@ class MainActivity : Activity() {
         }
 
         val column = LinearLayout(this).apply {
+            dashboard = this
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(10), dp(28), dp(8))
             addView(topRow, LinearLayout.LayoutParams(match, wrap))
@@ -419,8 +420,15 @@ class MainActivity : Activity() {
     private val dayFormat = java.text.SimpleDateFormat("EEEE", java.util.Locale.ITALY)
     private val dateFormat = java.text.SimpleDateFormat("d MMMM", java.util.Locale.ITALY)
 
+    private lateinit var dashboard: View
+
     private fun renderClock() {
         val now = java.util.Date()
+        // Night: dim everything and nudge the layout a few px each hour, against burn-in. No animation.
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        dashboard.alpha = if (hour >= 23 || hour < 6) 0.35f else 1f
+        dashboard.translationX = (hour % 4 - 2) * resources.displayMetrics.density * 2
+        dashboard.translationY = (hour % 3 - 1) * resources.displayMetrics.density * 2
         clockView.text = timeFormat.format(now)
         dayView.text = dayFormat.format(now).uppercase(java.util.Locale.ITALY)
         dateView.text = dateFormat.format(now).uppercase(java.util.Locale.ITALY)
@@ -517,7 +525,7 @@ class MainActivity : Activity() {
         // Only music commands need Meld; timer, volume and time work without it.
         val needsMeld = when (intent) {
             EchoIntent.MusicPause, EchoIntent.MusicResume, EchoIntent.MusicNext, EchoIntent.MusicPrevious,
-            is EchoIntent.MusicSearch, null -> true
+            is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, is EchoIntent.MusicSearch, null -> true
             else -> false
         }
         if (needsMeld && controller == null) {
@@ -530,7 +538,19 @@ class MainActivity : Activity() {
             EchoIntent.MusicNext -> controller?.seekToNextMediaItem()
             EchoIntent.MusicPrevious -> controller?.seekToPreviousMediaItem()
             is EchoIntent.MusicSearch -> playSearch(intent.query)
-            is EchoIntent.VolumeSet -> setVolumePercent(intent.percent)
+            is EchoIntent.MusicShuffle -> {
+                controller?.shuffleModeEnabled = intent.enabled
+                reply(Replies.shuffle(intent.enabled))
+            }
+            is EchoIntent.MusicRepeat -> {
+                controller?.repeatMode = if (intent.enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+                reply(Replies.repeat(intent.enabled))
+            }
+            is EchoIntent.VolumeSet -> {
+                if (intent.percent == 0 && volumePercent() > 0) volumeBeforeMute = volumePercent()
+                setVolumePercent(intent.percent)
+            }
+            EchoIntent.VolumeUnmute -> setVolumePercent(volumeBeforeMute)
             EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
             EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
             EchoIntent.WeatherNow -> showWeather(tomorrow = false)
@@ -543,6 +563,17 @@ class MainActivity : Activity() {
             EchoIntent.TimerCancel -> {
                 val had = dismissTimer()
                 reply(if (had) Replies.TIMER_CANCELLED else Replies.NO_TIMER)
+            }
+            EchoIntent.Date -> {
+                val now = java.util.Date()
+                reply(Replies.date(
+                    dayFormat.format(now), java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH),
+                    java.text.SimpleDateFormat("MMMM", java.util.Locale.ITALY).format(now),
+                ))
+            }
+            EchoIntent.TimerRemaining -> {
+                val left = kitchenTimer.remainingMs()
+                reply(if (kitchenTimer.isRunning && left > 0) Replies.timerRemaining(((left + 999) / 1000).toInt()) else Replies.NO_TIMER)
             }
             EchoIntent.Time -> {
                 val now = java.util.Calendar.getInstance()
@@ -583,6 +614,10 @@ class MainActivity : Activity() {
 
     /** "Parla" button: starts a command session, or ends the current one early. */
     private fun toggleListening() {
+        if (speakingCount > 0) { // tap while the assistant talks = be quiet
+            tts.stop()
+            return
+        }
         if (recorder.isRecording) {
             recorder.stop() // the recorder thread reports back through onUtterance
             return
@@ -638,6 +673,7 @@ class MainActivity : Activity() {
                 EchoIntent.MusicPause, is EchoIntent.MusicSearch -> Unit // stay paused / search starts playback
                 // Anything that does not itself change playback: put the music back.
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
+                is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, EchoIntent.TimerRemaining,
                 is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
                 is EchoIntent.TimerCreate, EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, null -> c.play()
             }
@@ -716,6 +752,8 @@ class MainActivity : Activity() {
 
     // Music volume is the system STREAM_MUSIC one, which is what Meld plays on.
     private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+    private var volumeBeforeMute = 30 // restored by "riattiva l'audio"
 
     private fun volumePercent(): Int {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
