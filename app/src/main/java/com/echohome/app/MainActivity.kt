@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
@@ -46,6 +47,9 @@ class MainActivity : Activity() {
         private const val PROGRESS_INTERVAL_MS = 1_000L
         private const val REQUEST_RECORD_AUDIO = 1
         private const val BEEP_SETTLE_MS = 350L
+        private const val VOLUME_STEP = 10
+        private const val RING_INTERVAL_MS = 900L
+        private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
         private const val PREF_WAKE = "wake_enabled"
     }
@@ -75,11 +79,24 @@ class MainActivity : Activity() {
     private lateinit var previousButton: Button
     private lateinit var speakButton: Button
     private lateinit var wakeButton: Button
+    private lateinit var timerView: TextView
 
     // Voice input: mic -> RAM -> Whisper -> IntentParser. The model loads lazily on first use.
     // Needs `assets`, which only exists after the Activity is attached: created in onCreate.
     private lateinit var recorder: MicRecorder
     private lateinit var wakeListener: WakeWordListener
+    private lateinit var kitchenTimer: KitchenTimer
+
+    // Timer alarm: beeps every RING_INTERVAL_MS until dismissed (voice, tap on the timer, or timeout).
+    private var ringing = false
+    private var ringCount = 0
+    private val ringTick = object : Runnable {
+        override fun run() {
+            if (!ringing) return
+            beep()
+            if (++ringCount >= RING_MAX_BEEPS) stopRinging() else mainHandler.postDelayed(this, RING_INTERVAL_MS)
+        }
+    }
 
     // Wake word ("Hey Jarvis") is opt-in: the mic is only open while this is on.
     private var wakeEnabled = false
@@ -97,6 +114,7 @@ class MainActivity : Activity() {
     private val progressTicker = object : Runnable {
         override fun run() {
             renderProgress()
+            renderTimer()
             if (visible) mainHandler.postDelayed(this, PROGRESS_INTERVAL_MS)
         }
     }
@@ -132,11 +150,29 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         recorder = MicRecorder(assets)
         wakeListener = WakeWordListener(assets)
+        kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging() }
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
         setContentView(buildUi())
         renderDisconnected("Meld · non connesso")
+        handleDebugCommand(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleDebugCommand(intent)
+    }
+
+    /**
+     * Debug builds only: `adb shell am start -n com.echohome.app/.MainActivity --es echo_cmd "timer 5 minuti"`
+     * runs a text command as if it were typed. Ignored in release builds.
+     */
+    private fun handleDebugCommand(launch: Intent?) {
+        val debuggable = applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val cmd = launch?.getStringExtra("echo_cmd")
+        if (!debuggable || cmd.isNullOrBlank()) return
+        mainHandler.postDelayed({ runCommand(cmd) }, 500)
     }
 
     override fun onStart() {
@@ -145,6 +181,7 @@ class MainActivity : Activity() {
         connectToMeld()
         mainHandler.post(progressTicker)
         startWake()
+        kitchenTimer.resume()
     }
 
     override fun onStop() {
@@ -277,6 +314,13 @@ class MainActivity : Activity() {
         val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
         root.addView(title, LinearLayout.LayoutParams(match, wrap))
         root.addView(statusView, LinearLayout.LayoutParams(match, wrap))
+        timerView = TextView(this).apply {
+            textSize = 18f
+            setTextColor(Color.rgb(255, 193, 7))
+            visibility = View.GONE
+            setOnClickListener { dismissTimer() } // tap = stop the alarm / cancel the countdown
+        }
+        root.addView(timerView, LinearLayout.LayoutParams(match, wrap))
         root.addView(nowPlaying, LinearLayout.LayoutParams(match, 0, 1f))
         root.addView(queryInput, LinearLayout.LayoutParams(match, dp(52)))
         root.addView(controls, LinearLayout.LayoutParams(match, wrap))
@@ -369,14 +413,36 @@ class MainActivity : Activity() {
 
     /** Text field entry point: known commands run as such, anything else is a plain music search. */
     private fun runCommand(text: String, fromVoice: Boolean = false, detail: String = ""): EchoIntent? {
-        val c = controller ?: return null
         val intent = IntentParser.parse(text)
+        // Only music commands need Meld; timer, volume and time work without it.
+        val needsMeld = when (intent) {
+            EchoIntent.MusicPause, EchoIntent.MusicResume, EchoIntent.MusicNext, EchoIntent.MusicPrevious,
+            is EchoIntent.MusicSearch, null -> true
+            else -> false
+        }
+        if (needsMeld && controller == null) {
+            statusView.text = "Meld non connesso"
+            return null
+        }
         when (intent) {
-            EchoIntent.MusicPause -> c.pause()
-            EchoIntent.MusicResume -> c.play()
-            EchoIntent.MusicNext -> c.seekToNextMediaItem()
-            EchoIntent.MusicPrevious -> c.seekToPreviousMediaItem()
+            EchoIntent.MusicPause -> controller?.pause()
+            EchoIntent.MusicResume -> controller?.play()
+            EchoIntent.MusicNext -> controller?.seekToNextMediaItem()
+            EchoIntent.MusicPrevious -> controller?.seekToPreviousMediaItem()
             is EchoIntent.MusicSearch -> playSearch(intent.query)
+            is EchoIntent.VolumeSet -> setVolumePercent(intent.percent)
+            EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
+            EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
+            is EchoIntent.TimerCreate -> {
+                kitchenTimer.start(intent.seconds)
+                renderTimer()
+                statusView.text = "Timer impostato: ${describeDuration(intent.seconds)}"
+            }
+            EchoIntent.TimerCancel -> {
+                val had = dismissTimer()
+                statusView.text = if (had) "Timer annullato" else "Nessun timer attivo"
+            }
+            EchoIntent.Time -> statusView.text = "Sono le ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.ITALY).format(java.util.Date())}"
             // Typed text falls back to a plain search; a voice transcript must be a real command.
             null -> if (fromVoice) {
                 statusView.text = "Non ho capito: “$text” ($detail)"
@@ -467,7 +533,10 @@ class MainActivity : Activity() {
         if (sessionWasPlaying && c != null) {
             when (executed) {
                 EchoIntent.MusicPause, is EchoIntent.MusicSearch -> Unit // stay paused / search starts playback
-                EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume, null -> c.play()
+                // Anything that does not itself change playback: put the music back.
+                EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
+                is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
+                is EchoIntent.TimerCreate, EchoIntent.TimerCancel, null -> c.play()
             }
         }
         sessionWasPlaying = false
@@ -542,6 +611,71 @@ class MainActivity : Activity() {
         activeController.setMediaItem(mediaItem)
         activeController.prepare()
         activeController.play()
+    }
+
+    // Music volume is the system STREAM_MUSIC one, which is what Meld plays on.
+    private val audioManager by lazy { getSystemService(AUDIO_SERVICE) as AudioManager }
+
+    private fun volumePercent(): Int {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        return Math.round(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max)
+    }
+
+    private fun setVolumePercent(percent: Int) {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val clamped = percent.coerceIn(0, 100)
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(clamped * max / 100f), 0)
+        statusView.text = "Volume ${volumePercent()}%"
+    }
+
+    // ---- Timer ------------------------------------------------------------
+
+    private fun describeDuration(seconds: Int): String {
+        val h = seconds / 3600
+        val m = seconds % 3600 / 60
+        val sec = seconds % 60
+        return listOfNotNull(
+            if (h > 0) "$h ${if (h == 1) "ora" else "ore"}" else null,
+            if (m > 0) "$m ${if (m == 1) "minuto" else "minuti"}" else null,
+            if (sec > 0) "$sec ${if (sec == 1) "secondo" else "secondi"}" else null,
+        ).joinToString(" e ")
+    }
+
+    private fun startRinging() {
+        ringing = true
+        ringCount = 0
+        statusView.text = "Timer scaduto"
+        renderTimer()
+        mainHandler.removeCallbacks(ringTick)
+        mainHandler.post(ringTick)
+    }
+
+    private fun stopRinging() {
+        ringing = false
+        mainHandler.removeCallbacks(ringTick)
+        renderTimer()
+    }
+
+    /** Stops the alarm and/or cancels the countdown. True if there was anything to stop. */
+    private fun dismissTimer(): Boolean {
+        val wasRinging = ringing
+        if (wasRinging) stopRinging()
+        return kitchenTimer.cancel() || wasRinging
+    }
+
+    private fun renderTimer() {
+        when {
+            ringing -> {
+                timerView.text = "⏱ Timer scaduto · tocca per fermare"
+                timerView.visibility = View.VISIBLE
+            }
+            kitchenTimer.isRunning -> {
+                val total = (kitchenTimer.remainingMs() + 999) / 1000
+                timerView.text = "⏱ %d:%02d".format(total / 60, total % 60)
+                timerView.visibility = View.VISIBLE
+            }
+            else -> timerView.visibility = View.GONE
+        }
     }
 
     private fun togglePlayPause() {

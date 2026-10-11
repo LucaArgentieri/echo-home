@@ -74,4 +74,71 @@ class IntentParserTest {
         assertNull(IntentParser.parse("la causa"))
         assertNull(IntentParser.parse("mettere"))
     }
+
+    @Test fun volumeSet() {
+        assertEquals(EchoIntent.VolumeSet(40), IntentParser.parse("volume 40"))
+        assertEquals(EchoIntent.VolumeSet(40), IntentParser.parse("volume quaranta"))
+        assertEquals(EchoIntent.VolumeSet(25), IntentParser.parse("metti il volume a venticinque"))
+        assertEquals(EchoIntent.VolumeSet(70), IntentParser.parse("imposta il volume al 70%"))
+        assertEquals(EchoIntent.VolumeSet(100), IntentParser.parse("volume al massimo"))
+        assertEquals(EchoIntent.VolumeSet(0), IntentParser.parse("volume al minimo"))
+        assertEquals(EchoIntent.VolumeSet(100), IntentParser.parse("volume 250")) // clamped
+    }
+
+    @Test fun volumeUpDown() {
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alza il volume"))
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("più forte"))
+        assertEquals(EchoIntent.VolumeDown, IntentParser.parse("abbassa il volume"))
+        assertEquals(EchoIntent.VolumeDown, IntentParser.parse("più piano"))
+    }
+
+    @Test fun time() {
+        assertEquals(EchoIntent.Time, IntentParser.parse("che ore sono"))
+        assertEquals(EchoIntent.Time, IntentParser.parse("Che ora è?"))
+        assertEquals(EchoIntent.Time, IntentParser.parse("dimmi l'ora"))
+    }
+
+    @Test fun numberWords() {
+        assertEquals(0, IntentParser.parseNumber("zero"))
+        assertEquals(13, IntentParser.parseNumber("tredici"))
+        assertEquals(21, IntentParser.parseNumber("ventuno"))
+        assertEquals(28, IntentParser.parseNumber("ventotto"))
+        assertEquals(35, IntentParser.parseNumber("trentacinque"))
+        assertEquals(100, IntentParser.parseNumber("cento"))
+        assertNull(IntentParser.parseNumber("radiohead"))
+    }
+
+    @Test fun volumeAndTimeDoNotStealMusicSearches() {
+        assertEquals(search("Radiohead"), IntentParser.parse("metti i Radiohead"))
+        assertEquals(search("Volume Up"), IntentParser.parse("metti Volume Up"))
+        assertNull(IntentParser.parse("volume radiohead"))
+    }
+
+    @Test fun timerCreate() {
+        assertEquals(EchoIntent.TimerCreate(600), IntentParser.parse("timer dieci minuti"))
+        assertEquals(EchoIntent.TimerCreate(600), IntentParser.parse("timer 10 minuti"))
+        assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("imposta un timer di 5 minuti"))
+        assertEquals(EchoIntent.TimerCreate(90), IntentParser.parse("metti un timer per un minuto e 30 secondi"))
+        assertEquals(EchoIntent.TimerCreate(1800), IntentParser.parse("timer mezz'ora"))
+        assertEquals(EchoIntent.TimerCreate(5400), IntentParser.parse("timer un'ora e mezza"))
+        assertEquals(EchoIntent.TimerCreate(7200 + 30 * 60), IntentParser.parse("timer due ore e 30 minuti"))
+        assertEquals(EchoIntent.TimerCreate(900), IntentParser.parse("timer un quarto d'ora"))
+        assertEquals(EchoIntent.TimerCreate(45), IntentParser.parse("timer 45 secondi"))
+    }
+
+    @Test fun timerCancel() {
+        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("annulla timer"))
+        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("annulla il timer"))
+        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("ferma il timer"))
+        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("spegni la sveglia"))
+    }
+
+    @Test fun timerNeverBecomesMusicSearchOrPause() {
+        assertNull(IntentParser.parse("timer"))
+        assertNull(IntentParser.parse("timer pippo"))
+        assertNull(IntentParser.parse("metti un timer"))
+        assertNull(IntentParser.parse("timer 0 minuti"))
+        assertNull(IntentParser.parse("timer 30 ore"))
+        assertEquals(EchoIntent.MusicPause, IntentParser.parse("ferma la musica"))
+    }
 }
