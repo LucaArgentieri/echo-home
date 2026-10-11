@@ -4,7 +4,7 @@
     <!-- Voice commands: audio is processed in RAM only, never stored or sent anywhere. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
-    <!-- Only to download cover art from the URL Meld publishes. -->
+    <!-- Cover art from the URL Meld publishes, and the weather forecast (api.open-meteo.com). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Android 11+ package visibility: Echo Home must be able to discover Meld. -->

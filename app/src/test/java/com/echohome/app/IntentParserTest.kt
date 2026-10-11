@@ -54,7 +54,7 @@ class IntentParserTest {
     @Test fun unknownOrEmptyIsNull() {
         assertNull(IntentParser.parse(""))
         assertNull(IntentParser.parse("   "))
-        assertNull(IntentParser.parse("che tempo fa"))
+        assertNull(IntentParser.parse("che bella giornata"))
         assertNull(IntentParser.parse("Radiohead"))
         assertNull(IntentParser.parse("metti"))
     }
@@ -140,5 +140,19 @@ class IntentParserTest {
         assertNull(IntentParser.parse("timer 0 minuti"))
         assertNull(IntentParser.parse("timer 30 ore"))
         assertEquals(EchoIntent.MusicPause, IntentParser.parse("ferma la musica"))
+    }
+
+    @Test fun weather() {
+        assertEquals(EchoIntent.WeatherNow, IntentParser.parse("che tempo fa"))
+        assertEquals(EchoIntent.WeatherNow, IntentParser.parse("Che tempo fa oggi?"))
+        assertEquals(EchoIntent.WeatherNow, IntentParser.parse("meteo"))
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("che tempo farà domani"))
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("che tempo fa domani?"))
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("meteo di domani"))
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("previsioni per domani"))
+    }
+
+    @Test fun weatherDoesNotStealMusic() {
+        assertEquals(search("Meteo Is Cool"), IntentParser.parse("metti Meteo Is Cool"))
     }
 }

@@ -92,9 +92,10 @@ L'APK debug pesa circa 250 MB, quasi tutto per Whisper base.
 
 ## V0.3 (in corso)
 
-Fatto: volume, ora, timer, risposte parlate. Mancano: meteo (San Giuliano Milanese), wake word «Echo», UI smart display.
+Fatto: volume, ora, timer, risposte parlate, meteo. Mancano: wake word «Echo», UI smart display.
 
 - **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `annulla timer`.
 - **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.
 - **Timer**: uno solo; la scadenza è salvata, quindi suona anche se l'app era chiusa. Alla scadenza dice «Il timer è scaduto» e poi suona fino a quando non lo fermi (tocco o «annulla timer»).
+- **Meteo** (Open-Meteo, senza chiave): fisso su San Giuliano Milanese. `che tempo fa` → temperatura e condizioni adesso, massima/minima di oggi. `che tempo farà domani` → minima, massima, condizioni e probabilità di pioggia **per ognuna delle 24 ore** (tabella a schermo; a voce un riassunto con le fasce a rischio, dal 40%). Unica chiamata di rete dell'app (`api.open-meteo.com`), con le sole coordinate della città; risultato in cache per 10 minuti e, se la rete manca, si usa l'ultimo dato.
 - **Test veloce da terminale** (solo build debug): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.

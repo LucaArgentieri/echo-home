@@ -49,6 +49,8 @@ class MainActivity : Activity() {
         private const val BEEP_SETTLE_MS = 350L
         private const val VOLUME_STEP = 10
         private const val RING_INTERVAL_MS = 900L
+        private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
+        private const val WEATHER_PANEL_MS = 90_000L
         private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
         private const val PREF_WAKE = "wake_enabled"
@@ -80,6 +82,7 @@ class MainActivity : Activity() {
     private lateinit var speakButton: Button
     private lateinit var wakeButton: Button
     private lateinit var timerView: TextView
+    private lateinit var weatherView: TextView
 
     // Voice input: mic -> RAM -> Whisper -> IntentParser. The model loads lazily on first use.
     // Needs `assets`, which only exists after the Activity is attached: created in onCreate.
@@ -203,6 +206,7 @@ class MainActivity : Activity() {
         wakeListener.release()
         tts.release()
         artworkExecutor.shutdownNow()
+        weatherExecutor.shutdownNow()
         sttExecutor.execute { stt?.release(); stt = null }
         sttExecutor.shutdown()
         super.onDestroy()
@@ -219,7 +223,7 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "Echo Home v0.2"
+            text = "Echo Home v0.3"
             textSize = 22f
             setTextColor(Color.WHITE)
         }
@@ -324,6 +328,15 @@ class MainActivity : Activity() {
             setOnClickListener { dismissTimer() } // tap = stop the alarm / cancel the countdown
         }
         root.addView(timerView, LinearLayout.LayoutParams(match, wrap))
+        weatherView = TextView(this).apply {
+            textSize = 13f
+            typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(Color.rgb(144, 202, 249))
+            visibility = View.GONE
+            setPadding(0, dp(4), 0, dp(4))
+            setOnClickListener { visibility = View.GONE } // tap to dismiss
+        }
+        root.addView(weatherView, LinearLayout.LayoutParams(match, wrap))
         root.addView(nowPlaying, LinearLayout.LayoutParams(match, 0, 1f))
         root.addView(queryInput, LinearLayout.LayoutParams(match, dp(52)))
         root.addView(controls, LinearLayout.LayoutParams(match, wrap))
@@ -436,6 +449,8 @@ class MainActivity : Activity() {
             is EchoIntent.VolumeSet -> setVolumePercent(intent.percent)
             EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
             EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
+            EchoIntent.WeatherNow -> showWeather(tomorrow = false)
+            EchoIntent.WeatherTomorrow -> showWeather(tomorrow = true)
             is EchoIntent.TimerCreate -> {
                 kitchenTimer.start(intent.seconds)
                 renderTimer()
@@ -544,7 +559,7 @@ class MainActivity : Activity() {
                 // Anything that does not itself change playback: put the music back.
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
                 is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
-                is EchoIntent.TimerCreate, EchoIntent.TimerCancel, null -> c.play()
+                is EchoIntent.TimerCreate, EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, null -> c.play()
             }
         }
         sessionWasPlaying = false
@@ -663,6 +678,62 @@ class MainActivity : Activity() {
     /** Runs [block] now, or as soon as the current speech has finished. */
     private fun whenSpeechDone(block: () -> Unit) {
         if (speakingCount == 0) block() else afterSpeech = block
+    }
+
+    // ---- Weather (San Giuliano Milanese, Open-Meteo) --------------------------
+
+    private val weatherExecutor = Executors.newSingleThreadExecutor()
+    private var lastForecast: Forecast? = null
+    private var lastForecastAt = 0L
+    private val hideWeather = Runnable { weatherView.visibility = View.GONE }
+
+    /** Pending work (network) that must finish before a voice session may end, like speech. */
+    private fun beginPending() { speakingCount++ }
+
+    private fun endPending() {
+        speakingCount--
+        if (speakingCount == 0) {
+            afterSpeech?.let { afterSpeech = null; it() }
+            startWake()
+        }
+    }
+
+    private fun showWeather(tomorrow: Boolean) {
+        statusView.text = "Leggo il meteo…"
+        beginPending()
+        val cached = lastForecast?.takeIf { System.currentTimeMillis() - lastForecastAt < WEATHER_CACHE_MS }
+        weatherExecutor.execute {
+            val forecast = cached ?: try {
+                WeatherClient.fetch()
+            } catch (_: Exception) {
+                lastForecast // stale data is better than none
+            }
+            mainHandler.post {
+                if (forecast == null) {
+                    reply(Replies.WEATHER_UNAVAILABLE)
+                } else {
+                    if (forecast !== lastForecast || cached == null) {
+                        lastForecast = forecast
+                        lastForecastAt = System.currentTimeMillis()
+                    }
+                    renderWeather(forecast, tomorrow)
+                    reply(if (tomorrow) Replies.weatherTomorrow(forecast) else Replies.weatherNow(forecast))
+                }
+                endPending()
+            }
+        }
+    }
+
+    private fun renderWeather(f: Forecast, tomorrow: Boolean) {
+        weatherView.text = if (tomorrow) {
+            "${WeatherClient.CITY} · domani · min ${f.tomorrowMin}° · max ${f.tomorrowMax}° · ${Replies.condition(f.tomorrowCode)}\n" +
+                "Probabilità di pioggia per ora:\n" + Replies.rainTable(f.tomorrowRainByHour)
+        } else {
+            "${WeatherClient.CITY} · adesso ${f.nowTemp}° · ${Replies.condition(f.nowCode)} · oggi min ${f.todayMin}° max ${f.todayMax}°"
+        }
+        weatherView.visibility = View.VISIBLE
+        mainHandler.removeCallbacks(hideWeather)
+        mainHandler.postDelayed(hideWeather, WEATHER_PANEL_MS)
     }
 
     // ---- Timer ------------------------------------------------------------

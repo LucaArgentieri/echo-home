@@ -11,6 +11,8 @@ sealed interface EchoIntent {
     data object VolumeDown : EchoIntent
     data class VolumeSet(val percent: Int) : EchoIntent
     data object Time : EchoIntent
+    data object WeatherNow : EchoIntent
+    data object WeatherTomorrow : EchoIntent
     data class TimerCreate(val seconds: Int) : EchoIntent
     data object TimerCancel : EchoIntent
 }
@@ -40,6 +42,14 @@ object IntentParser {
     )
     private val timerBare = rx("(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?timer")
     private val timerCancel = rx("(?:annulla|cancella|elimina|ferma|spegni|stoppa|stop)(?: il| la)? (?:timer|sveglia)|timer (?:annulla|stop|basta)")
+    private val weatherTomorrow = rx(
+        "(?:che tempo (?:farà|fa|ci sarà|c'è) domani|(?:com'è|come sarà|dimmi)? ?(?:il )?(?:meteo|tempo) (?:di |per )?domani|" +
+            "previsioni(?: del tempo)?(?: per| di)? domani|domani (?:che tempo fa|piove|pioverà))",
+    )
+    private val weatherNow = rx(
+        "(?:che tempo (?:fa|c'è)(?: adesso| ora| oggi| in questo momento)?|(?:com'è|come è|dimmi) (?:il )?(?:tempo|meteo)(?: oggi| adesso| ora)?|" +
+            "meteo(?: oggi| adesso)?|previsioni(?: del tempo)?|piove(?: adesso| ora)?)",
+    )
     private val time = rx("(?:che|quale) (?:ore sono|ora è|ora e|ora)|dimmi (?:l'ora|che ore sono)|l'ora|ora")
 
     // "metti i Radiohead", "metti su Wish You Were Here", "fai partire le ...", "suona ..."
@@ -92,6 +102,8 @@ object IntentParser {
         volumeDown.matches(cleaned) -> EchoIntent.VolumeDown
         volumeSet.matchEntire(cleaned)?.groupValues?.get(1)?.let { parseNumber(it) } != null ->
             EchoIntent.VolumeSet(parseNumber(volumeSet.matchEntire(cleaned)!!.groupValues[1])!!.coerceIn(0, 100))
+        weatherTomorrow.matches(cleaned) -> EchoIntent.WeatherTomorrow
+        weatherNow.matches(cleaned) -> EchoIntent.WeatherNow
         time.matches(cleaned) -> EchoIntent.Time
         pause.matches(cleaned) -> EchoIntent.MusicPause
         resume.matches(cleaned) -> EchoIntent.MusicResume
