@@ -16,10 +16,13 @@ import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.View
+import android.view.WindowManager
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -50,6 +53,7 @@ class MainActivity : Activity() {
         private const val VOLUME_STEP = 10
         private const val RING_INTERVAL_MS = 900L
         private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
+        private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
         private const val WEATHER_PANEL_MS = 90_000L
         private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
@@ -76,13 +80,21 @@ class MainActivity : Activity() {
     private lateinit var progressView: TextView
     private lateinit var queryInput: EditText
     private lateinit var playButton: Button
-    private lateinit var pauseButton: Button
-    private lateinit var nextButton: Button
-    private lateinit var previousButton: Button
-    private lateinit var speakButton: Button
-    private lateinit var wakeButton: Button
+    private lateinit var pauseButton: ImageButton
+    private lateinit var nextButton: ImageButton
+    private lateinit var previousButton: ImageButton
     private lateinit var timerView: TextView
-    private lateinit var weatherView: TextView
+    private lateinit var weatherView: TextView // tomorrow's forecast, shown as an overlay
+    private lateinit var clockView: TextView
+    private lateinit var dayView: TextView
+    private lateinit var dateView: TextView
+    private lateinit var weatherTopView: TextView // current temperature in the header
+    private lateinit var assistantView: TextView
+    private lateinit var debugPanel: LinearLayout
+
+    private enum class AssistantState { IDLE, LISTENING, THINKING }
+    private var assistantState = AssistantState.IDLE
+    private var connectionMessage: String? = null // Meld status line that disappears once connected
 
     // Voice input: mic -> RAM -> Whisper -> IntentParser. The model loads lazily on first use.
     // Needs `assets`, which only exists after the Activity is attached: created in onCreate.
@@ -119,6 +131,7 @@ class MainActivity : Activity() {
         override fun run() {
             renderProgress()
             renderTimer()
+            renderClock()
             if (visible) mainHandler.postDelayed(this, PROGRESS_INTERVAL_MS)
         }
     }
@@ -159,9 +172,23 @@ class MainActivity : Activity() {
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // smart display: stays on while in front
         setContentView(buildUi())
+        renderClock()
+        renderAssistant()
         renderDisconnected("Meld · non connesso")
         handleDebugCommand(intent)
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -185,6 +212,7 @@ class MainActivity : Activity() {
         visible = true
         connectToMeld()
         mainHandler.post(progressTicker)
+        mainHandler.post(weatherRefresh)
         startWake()
         kitchenTimer.resume()
     }
@@ -192,6 +220,7 @@ class MainActivity : Activity() {
     override fun onStop() {
         visible = false
         mainHandler.removeCallbacks(progressTicker)
+        mainHandler.removeCallbacks(weatherRefresh)
         mainHandler.removeCallbacks(reconnectRunnable)
         mainHandler.removeCallbacks(searchTimeout)
         wakeListener.stop() // mic is released whenever the screen is not in front
@@ -212,65 +241,105 @@ class MainActivity : Activity() {
         super.onDestroy()
     }
 
-    private fun buildUi(): LinearLayout {
+    private fun buildUi(): FrameLayout {
         fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+        val match = ViewGroup.LayoutParams.MATCH_PARENT
+        val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
+        val white = Color.WHITE
+        val grey = Color.rgb(170, 170, 170)
+        val amber = Color.rgb(255, 193, 7)
+        val light = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
 
-        val root = LinearLayout(this).apply {
+        fun text(sizeSp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+            textSize = sizeSp
+            setTextColor(color)
+            if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
+            includeFontPadding = false
+        }
+        fun divider() = View(this).apply { setBackgroundColor(Color.rgb(50, 50, 50)) }
+        fun icon(res: Int, sizeDp: Int, onClick: () -> Unit) = ImageButton(this).apply {
+            setImageResource(res)
+            setBackgroundColor(Color.TRANSPARENT)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply { marginEnd = dp(10) }
+            setOnClickListener { onClick() }
+        }
+
+        // Top row: clock (+ timer) on the left, current weather on the right.
+        clockView = text(64f, white).apply {
+            typeface = light
+            setOnLongClickListener { // hidden developer panel
+                debugPanel.visibility = if (debugPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+                true
+            }
+        }
+        timerView = text(20f, amber).apply {
+            visibility = View.GONE
+            setOnClickListener { dismissTimer() } // tap = stop the alarm / cancel the countdown
+        }
+        weatherTopView = text(26f, white).apply {
+            text = "–°"
+            setOnClickListener { refreshWeather() } // tap to refresh
+        }
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(clockView)
+            addView(timerView, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(20); topMargin = dp(18) })
+            addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(weatherTopView)
+        }
+
+        // Date
+        dayView = text(24f, white).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER }
+        dateView = text(18f, grey).apply { letterSpacing = 0.1f; gravity = Gravity.CENTER }
+        val dateBlock = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(28), dp(18), dp(28), dp(18))
-            setBackgroundColor(Color.rgb(12, 12, 12))
+            addView(dayView, LinearLayout.LayoutParams(match, wrap))
+            addView(dateView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
         }
 
-        val title = TextView(this).apply {
-            text = "Echo Home v0.3"
-            textSize = 22f
-            setTextColor(Color.WHITE)
-        }
-
-        statusView = TextView(this).apply {
-            textSize = 15f
-            setTextColor(Color.LTGRAY)
-            setPadding(0, dp(4), 0, dp(8))
-        }
-
+        // Now playing: cover, title/artist/progress and the three controls underneath.
         coverView = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            setBackgroundColor(Color.rgb(30, 30, 30))
+            setBackgroundColor(Color.rgb(28, 28, 28))
         }
-        titleView = TextView(this).apply {
-            textSize = 20f
-            setTextColor(Color.WHITE)
-            maxLines = 2
-        }
-        artistView = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.LTGRAY)
-            maxLines = 1
-        }
-        progressView = TextView(this).apply {
-            textSize = 13f
-            setTextColor(Color.GRAY)
+        titleView = text(22f, white, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        artistView = text(17f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        progressView = text(13f, Color.rgb(120, 120, 120))
+        previousButton = icon(R.drawable.ic_prev, 48) { controller?.seekToPreviousMediaItem() }
+        pauseButton = icon(R.drawable.ic_play, 56) { togglePlayPause() }
+        nextButton = icon(R.drawable.ic_next, 48) { controller?.seekToNextMediaItem() }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(previousButton)
+            addView(pauseButton)
+            addView(nextButton)
         }
         val textColumn = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, 0, 0)
-            addView(titleView)
-            addView(artistView)
-            addView(progressView)
+            setPadding(dp(18), 0, 0, 0)
+            addView(titleView, LinearLayout.LayoutParams(match, wrap))
+            addView(artistView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
+            addView(progressView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
+            addView(controls, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(4) })
         }
         val nowPlaying = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(coverView, LinearLayout.LayoutParams(dp(90), dp(90)))
-            addView(textColumn, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(coverView, LinearLayout.LayoutParams(dp(104), dp(104)))
+            addView(textColumn, LinearLayout.LayoutParams(0, match, 1f))
         }
 
+        // Hidden developer panel (long-press the clock): search field and shortcuts.
         queryInput = EditText(this).apply {
             hint = "Cerca (es. Radiohead)"
             setHintTextColor(Color.GRAY)
-            setTextColor(Color.WHITE)
+            setTextColor(white)
             setSingleLine()
             // No fullscreen keyboard in landscape: it would hide the whole UI.
             imeOptions = EditorInfo.IME_ACTION_SEARCH or EditorInfo.IME_FLAG_NO_EXTRACT_UI
@@ -281,83 +350,97 @@ class MainActivity : Activity() {
                 } else false
             }
         }
-
         playButton = Button(this).apply {
             text = "Cerca e riproduci"
             setOnClickListener { runCommand(queryInput.text.toString()) }
-        }
-        pauseButton = Button(this).apply {
-            text = "Pausa"
-            setOnClickListener { togglePlayPause() }
-        }
-        previousButton = Button(this).apply {
-            text = "Prev"
-            setOnClickListener { controller?.seekToPreviousMediaItem() }
-        }
-        nextButton = Button(this).apply {
-            text = "Next"
-            setOnClickListener { controller?.seekToNextMediaItem() }
         }
         val openMeldButton = Button(this).apply {
             text = "Apri Meld"
             setOnClickListener { openMeld() }
         }
-
-        val controls = LinearLayout(this).apply {
+        debugPanel = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(8), 0, 0)
-        }
-        val buttonParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
-            marginStart = dp(4)
-            marginEnd = dp(4)
-        }
-        controls.addView(playButton, buttonParams)
-        controls.addView(previousButton, buttonParams)
-        controls.addView(pauseButton, buttonParams)
-        controls.addView(nextButton, buttonParams)
-
-        val match = ViewGroup.LayoutParams.MATCH_PARENT
-        val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
-        root.addView(title, LinearLayout.LayoutParams(match, wrap))
-        root.addView(statusView, LinearLayout.LayoutParams(match, wrap))
-        timerView = TextView(this).apply {
-            textSize = 18f
-            setTextColor(Color.rgb(255, 193, 7))
+            gravity = Gravity.CENTER_VERTICAL
             visibility = View.GONE
-            setOnClickListener { dismissTimer() } // tap = stop the alarm / cancel the countdown
+            addView(queryInput, LinearLayout.LayoutParams(0, wrap, 1f))
+            addView(playButton)
+            addView(openMeldButton)
         }
-        root.addView(timerView, LinearLayout.LayoutParams(match, wrap))
+
+        // Bottom bar: message line on the left, assistant state on the right (tap = listen, long-press = wake word on/off).
+        statusView = text(15f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        assistantView = text(24f, white).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            setPadding(dp(16), dp(6), 0, dp(6))
+            setOnClickListener { toggleListening() }
+            setOnLongClickListener { toggleWake(); true }
+        }
+        val bottomBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(statusView, LinearLayout.LayoutParams(0, wrap, 1f))
+            addView(assistantView)
+        }
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(10), dp(28), dp(8))
+            addView(topRow, LinearLayout.LayoutParams(match, wrap))
+            addView(dateBlock, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2); bottomMargin = dp(8) })
+            addView(divider(), LinearLayout.LayoutParams(match, dp(1)))
+            addView(nowPlaying, LinearLayout.LayoutParams(match, 0, 1f).apply { topMargin = dp(8); bottomMargin = dp(8) })
+            addView(debugPanel, LinearLayout.LayoutParams(match, wrap))
+            addView(divider(), LinearLayout.LayoutParams(match, dp(1)))
+            addView(bottomBar, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+        }
+
+        // Tomorrow's forecast: overlay on top of everything, tap to dismiss.
         weatherView = TextView(this).apply {
-            textSize = 13f
+            textSize = 14f
             typeface = android.graphics.Typeface.MONOSPACE
             setTextColor(Color.rgb(144, 202, 249))
+            setBackgroundColor(Color.BLACK)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(28), dp(16), dp(28), dp(16))
             visibility = View.GONE
-            setPadding(0, dp(4), 0, dp(4))
-            setOnClickListener { visibility = View.GONE } // tap to dismiss
+            setOnClickListener { visibility = View.GONE }
         }
-        root.addView(weatherView, LinearLayout.LayoutParams(match, wrap))
-        root.addView(nowPlaying, LinearLayout.LayoutParams(match, 0, 1f))
-        root.addView(queryInput, LinearLayout.LayoutParams(match, dp(52)))
-        root.addView(controls, LinearLayout.LayoutParams(match, wrap))
-        speakButton = Button(this).apply {
-            text = "Parla"
-            isEnabled = false
-            setOnClickListener { toggleListening() }
+
+        return FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(column, FrameLayout.LayoutParams(match, match))
+            addView(weatherView, FrameLayout.LayoutParams(match, match))
         }
-        wakeButton = Button(this).apply {
-            setOnClickListener { toggleWake() }
+    }
+
+    // ---- Dashboard rendering ----------------------------------------------
+
+    private val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.ITALY)
+    private val dayFormat = java.text.SimpleDateFormat("EEEE", java.util.Locale.ITALY)
+    private val dateFormat = java.text.SimpleDateFormat("d MMMM", java.util.Locale.ITALY)
+
+    private fun renderClock() {
+        val now = java.util.Date()
+        clockView.text = timeFormat.format(now)
+        dayView.text = dayFormat.format(now).uppercase(java.util.Locale.ITALY)
+        dateView.text = dateFormat.format(now).uppercase(java.util.Locale.ITALY)
+    }
+
+    /** ○ idle (wake word armed), ● listening, ◌ working. A dim ○ means the wake word is off. */
+    private fun renderAssistant() {
+        assistantView.text = when (assistantState) {
+            AssistantState.IDLE -> "○"
+            AssistantState.LISTENING -> "● Ti ascolto…"
+            AssistantState.THINKING -> "◌ Elaboro…"
         }
-        renderWakeButton()
-        val bottomRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            addView(speakButton, LinearLayout.LayoutParams(wrap, wrap).apply { marginEnd = dp(8) })
-            addView(wakeButton, LinearLayout.LayoutParams(wrap, wrap).apply { marginEnd = dp(8) })
-            addView(openMeldButton, LinearLayout.LayoutParams(wrap, wrap))
-        }
-        root.addView(bottomRow, LinearLayout.LayoutParams(wrap, wrap))
-        return root
+        assistantView.setTextColor(
+            if (assistantState == AssistantState.IDLE && !wakeEnabled) Color.rgb(90, 90, 90) else Color.WHITE,
+        )
+    }
+
+    private fun setAssistant(state: AssistantState) {
+        assistantState = state
+        renderAssistant()
     }
 
     // ---- Connection -------------------------------------------------------
@@ -384,6 +467,7 @@ class MainActivity : Activity() {
         }
 
         statusView.text = "Connessione al MusicService di Meld…"
+        connectionMessage = statusView.text.toString()
         val token = SessionToken(this, ComponentName(pkg, MELD_SERVICE))
         val future = MediaController.Builder(this, token)
             .setListener(controllerListener)
@@ -479,14 +563,11 @@ class MainActivity : Activity() {
     private fun hasMicPermission() =
         checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
-    private fun renderWakeButton() {
-        wakeButton.text = if (wakeEnabled) "Wake word: ON" else "Wake word: OFF"
-    }
-
     private fun toggleWake() {
         wakeEnabled = !wakeEnabled
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_WAKE, wakeEnabled).apply()
-        renderWakeButton()
+        renderAssistant()
+        statusView.text = if (wakeEnabled) "Wake word attiva: «Hey Jarvis», «Hey Echo»" else "Wake word disattivata"
         if (wakeEnabled) {
             if (hasMicPermission()) startWake() else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
         } else {
@@ -524,8 +605,8 @@ class MainActivity : Activity() {
         sessionWasPlaying = c != null && (c.isPlaying || c.playWhenReady)
         if (sessionWasPlaying) c?.pause()
 
-        statusView.text = "● Ti ascolto…"
-        speakButton.text = "Fine"
+        statusView.text = ""
+        setAssistant(AssistantState.LISTENING)
         val startRecording = {
             if (voiceBusy) recorder.start { result -> mainHandler.post { onUtterance(result) } }
         }
@@ -550,8 +631,7 @@ class MainActivity : Activity() {
 
     private fun finishSession(executed: EchoIntent?) {
         voiceBusy = false
-        speakButton.text = "Parla"
-        speakButton.isEnabled = controller != null
+        setAssistant(AssistantState.IDLE)
         val c = controller
         if (sessionWasPlaying && c != null) {
             when (executed) {
@@ -573,9 +653,7 @@ class MainActivity : Activity() {
             endSession(null)
             return
         }
-        statusView.text = "◌ Elaboro…"
-        speakButton.text = "Parla"
-        speakButton.isEnabled = false
+        setAssistant(AssistantState.THINKING)
         // Diagnostics only (lengths and loudest sample): never the audio itself.
         val speechSec = "%.1f".format(samples.size / SpeechToText.SAMPLE_RATE.toFloat())
         val peak = "%.2f".format(samples.maxOf { kotlin.math.abs(it) })
@@ -724,7 +802,34 @@ class MainActivity : Activity() {
         }
     }
 
+    private val weatherRefresh = object : Runnable {
+        override fun run() {
+            refreshWeather()
+            if (visible) mainHandler.postDelayed(this, WEATHER_REFRESH_MS)
+        }
+    }
+
+    /** Updates the header temperature (silent). Same Open-Meteo call as the voice answers. */
+    private fun refreshWeather() {
+        weatherExecutor.execute {
+            val f = try { WeatherClient.fetch() } catch (_: Exception) { null }
+            mainHandler.post {
+                if (f != null) {
+                    lastForecast = f
+                    lastForecastAt = System.currentTimeMillis()
+                }
+                renderWeatherHeader()
+            }
+        }
+    }
+
+    private fun renderWeatherHeader() {
+        val f = lastForecast
+        weatherTopView.text = if (f == null) "–°" else "${f.nowTemp}° ${Replies.condition(f.nowCode)}"
+    }
+
     private fun renderWeather(f: Forecast, tomorrow: Boolean) {
+        renderWeatherHeader()
         weatherView.text = if (tomorrow) {
             "${WeatherClient.CITY} · domani · min ${f.tomorrowMin}° · max ${f.tomorrowMax}° · ${Replies.condition(f.tomorrowCode)}\n" +
                 "Probabilità di pioggia per ora:\n" + Replies.rainTable(f.tomorrowRainByHour)
@@ -795,8 +900,9 @@ class MainActivity : Activity() {
 
     private fun renderDisconnected(message: String) {
         statusView.text = message
+        connectionMessage = message
         setControlsEnabled(false)
-        titleView.text = "Nessun brano in riproduzione"
+        titleView.text = "Niente in riproduzione"
         artistView.text = ""
         progressView.text = ""
         showCover(null, null)
@@ -804,19 +910,18 @@ class MainActivity : Activity() {
 
     private fun renderState() {
         val c = controller ?: return
-        statusView.text = when {
-            c.playerError != null -> "Errore player: ${c.playerError?.errorCodeName}"
-            c.isPlaying -> "● Meld · in riproduzione"
-            c.playbackState == Player.STATE_BUFFERING -> "◌ Meld · buffering…"
-            else -> "○ Meld · connesso"
+        if (c.playerError != null) {
+            statusView.text = "Errore player: ${c.playerError?.errorCodeName}"
+        } else if (statusView.text.toString() == connectionMessage) {
+            statusView.text = "" // connected again: drop the "Meld non connesso" line
         }
-        pauseButton.text = if (c.isPlaying || c.playWhenReady) "Pausa" else "Riprendi"
+        pauseButton.setImageResource(if (c.isPlaying || c.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play)
     }
 
     private fun renderMetadata(metadata: MediaMetadata) {
         val title = metadata.title?.toString()?.takeIf { it.isNotBlank() }
         val artist = (metadata.artist ?: metadata.albumArtist)?.toString()?.takeIf { it.isNotBlank() }
-        titleView.text = title ?: "Nessun brano in riproduzione"
+        titleView.text = title ?: "Niente in riproduzione"
         artistView.text = artist.orEmpty()
         showCover(metadata.artworkData, metadata.artworkUri)
         renderProgress()
@@ -846,7 +951,6 @@ class MainActivity : Activity() {
         pauseButton.isEnabled = enabled
         nextButton.isEnabled = enabled
         previousButton.isEnabled = enabled
-        speakButton.isEnabled = enabled
     }
 
     // ---- Cover ------------------------------------------------------------
