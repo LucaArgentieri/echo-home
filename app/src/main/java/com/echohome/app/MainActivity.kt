@@ -31,6 +31,8 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.session.LibraryResult
+import androidx.media3.session.MediaBrowser
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
@@ -47,6 +49,9 @@ class MainActivity : Activity() {
 
         private const val RECONNECT_DELAY_MS = 3_000L
         private const val SEARCH_TIMEOUT_MS = 20_000L
+        // Meld returns up to ~75 local + ~20 online songs whatever the page size; Media3 throws if the
+        // answer is longer than the page asked for (it crashed Meld at 10), so ask for plenty.
+        private const val SEARCH_PAGE_SIZE = 500
         private const val PROGRESS_INTERVAL_MS = 1_000L
         private const val REQUEST_RECORD_AUDIO = 1
         private const val BEEP_SETTLE_MS = 350L
@@ -67,13 +72,14 @@ class MainActivity : Activity() {
     private val uiExecutor = Executor { mainHandler.post(it) }
     private val artworkExecutor = Executors.newSingleThreadExecutor()
 
-    private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var controllerFuture: ListenableFuture<out MediaController>? = null
     private var controller: MediaController? = null
     private var meldPackage: String? = null
     private var visible = false
 
     // Bumped on every artwork request so stale downloads are dropped.
     private var artworkRequest = 0
+    private var searchRequest = 0 // latest music search, older answers are ignored
     private var artworkKey: String? = null
 
     private lateinit var statusView: TextView
@@ -146,7 +152,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private val controllerListener = object : MediaController.Listener {
+    private val controllerListener = object : MediaBrowser.Listener {
         override fun onDisconnected(controller: MediaController) {
             releaseController()
             renderDisconnected("Meld · non connesso (riconnessione…)")
@@ -592,7 +598,8 @@ class MainActivity : Activity() {
         statusView.text = "Connessione al MusicService di Meld…"
         connectionMessage = statusView.text.toString()
         val token = SessionToken(this, ComponentName(pkg, MELD_SERVICE))
-        val future = MediaController.Builder(this, token)
+        // A MediaBrowser is a MediaController that can also ask Meld for search results (see playSearch).
+        val future = MediaBrowser.Builder(this, token)
             .setListener(controllerListener)
             .buildAsync()
         controllerFuture = future
@@ -865,6 +872,11 @@ class MainActivity : Activity() {
         }
     }
 
+    /**
+     * Asks Meld for the matching songs and plays the first one. Meld's own "voice search" gives up
+     * on artist-only queries ("Radiohead") and the old queue keeps playing, so we pick the song
+     * ourselves and hand Meld its media id; the voice search stays as the fallback.
+     */
     private fun playSearch(rawQuery: String) {
         val query = rawQuery.trim()
         val activeController = controller
@@ -874,17 +886,34 @@ class MainActivity : Activity() {
         mainHandler.removeCallbacks(searchTimeout)
         mainHandler.postDelayed(searchTimeout, SEARCH_TIMEOUT_MS)
 
-        val mediaItem = MediaItem.Builder()
-            .setRequestMetadata(
-                MediaItem.RequestMetadata.Builder()
-                    .setSearchQuery(query)
-                    .build()
-            )
-            .build()
+        val browser = activeController as? MediaBrowser
+        if (browser == null) {
+            playVoiceSearch(activeController, query)
+            return
+        }
+        val request = ++searchRequest
+        val future = browser.getSearchResult(query, 0, SEARCH_PAGE_SIZE, null)
+        future.addListener({
+            if (request != searchRequest || controller !== browser) return@addListener // superseded
+            val result = runCatching { future.get() }.getOrNull()
+            val first = result?.takeIf { it.resultCode == LibraryResult.RESULT_SUCCESS }?.value?.firstOrNull()
+            if (first == null) {
+                playVoiceSearch(browser, query)
+            } else {
+                browser.setMediaItem(first)
+                browser.prepare()
+                browser.play()
+            }
+        }, uiExecutor)
+    }
 
-        activeController.setMediaItem(mediaItem)
-        activeController.prepare()
-        activeController.play()
+    private fun playVoiceSearch(c: MediaController, query: String) {
+        val mediaItem = MediaItem.Builder()
+            .setRequestMetadata(MediaItem.RequestMetadata.Builder().setSearchQuery(query).build())
+            .build()
+        c.setMediaItem(mediaItem)
+        c.prepare()
+        c.play()
     }
 
     // Music volume is the system STREAM_MUSIC one, which is what Meld plays on.
