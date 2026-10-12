@@ -5,6 +5,8 @@ import android.content.res.AssetManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import com.k2fsa.sherpa.onnx.KeywordSpotter
 import com.k2fsa.sherpa.onnx.KeywordSpotterConfig
@@ -30,16 +32,22 @@ class WakeWordListener(private val assets: AssetManager) {
     }
 
     @Volatile private var running = false
+    @Volatile private var bargeIn = false
     private var thread: Thread? = null
     private var spotter: KeywordSpotter? = null
 
     val isListening get() = running
 
-    /** [onWake] runs on the listener thread; the listener has already stopped listening then. */
+    /**
+     * [onWake] runs on the listener thread; the listener has already stopped listening then.
+     * [bargeIn]: listening while the assistant speaks, so the mic uses the voice-communication path
+     * with the platform echo canceller (when the ROM has one).
+     */
     @SuppressLint("MissingPermission")
-    fun start(onWake: () -> Unit) {
+    fun start(bargeIn: Boolean = false, onWake: () -> Unit) {
         if (running) return
         running = true
+        this.bargeIn = bargeIn
         thread = Thread({ listen(onWake) }, "wake-word").also { it.start() }
     }
 
@@ -49,6 +57,8 @@ class WakeWordListener(private val assets: AssetManager) {
         thread?.takeIf { it !== Thread.currentThread() }?.join(2000)
         thread = null
     }
+
+    private var effects: List<android.media.audiofx.AudioEffect> = emptyList()
 
     private fun newSpotter(): KeywordSpotter {
         spotter?.let { return it }
@@ -87,11 +97,20 @@ class WakeWordListener(private val assets: AssetManager) {
                     SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 )
                 record = AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION, SAMPLE_RATE,
+                    if (bargeIn) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                    SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                     maxOf(minBuffer, chunk.size * 4),
                 )
                 if (record.state != AudioRecord.STATE_INITIALIZED) return
+                if (bargeIn) {
+                    val aec = if (AcousticEchoCanceler.isAvailable()) AcousticEchoCanceler.create(record.audioSessionId) else null
+                    val ns = if (NoiseSuppressor.isAvailable()) NoiseSuppressor.create(record.audioSessionId) else null
+                    aec?.enabled = true
+                    ns?.enabled = true
+                    effects = listOfNotNull(aec, ns)
+                    Log.i("EchoHome", "barge-in: echo canceller ${if (aec != null) "on" else "not available"}")
+                }
                 record.startRecording()
                 while (running) {
                     val n = record.read(chunk, 0, chunk.size)
@@ -118,6 +137,8 @@ class WakeWordListener(private val assets: AssetManager) {
         } finally {
             running = false
             runCatching { record?.stop() }
+            effects.forEach { runCatching { it.release() } }
+            effects = emptyList()
             record?.release()
             chunk.fill(0)
             floats.fill(0f)

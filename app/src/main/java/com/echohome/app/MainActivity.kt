@@ -74,6 +74,7 @@ class MainActivity : Activity() {
         private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
         private const val PREF_WAKE = "wake_enabled"
+        private const val PREF_BARGE_IN = "barge_in"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -140,6 +141,10 @@ class MainActivity : Activity() {
 
     // Wake word ("Hey Jarvis") is opt-in: the mic is only open while this is on.
     private var wakeEnabled = false
+    // Experimental: say the wake word while the assistant talks to cut it short. Off until tested on the Echo.
+    private var bargeInEnabled = false
+    private var bargeInActive = false // the wake listener is running in barge-in mode
+    private var bargeInPending = false // the wake word interrupted speech; a command session follows
     private var voiceBusy = false           // a wake/command session is running
     private var sessionWasPlaying = false   // music was paused for the session and may need resuming
     private val sttExecutor = Executors.newSingleThreadExecutor()
@@ -216,6 +221,7 @@ class MainActivity : Activity() {
         tts = TextToSpeech(applicationContext)
         kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging(it) }
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
+        bargeInEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_BARGE_IN, false)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // smart display: stays on while in front
@@ -373,6 +379,15 @@ class MainActivity : Activity() {
             text = "Cerca e riproduci"
             setOnClickListener { runCommand(queryInput.text.toString()) }
         }
+        val bargeInButton = Button(this).apply {
+            fun label() { text = "Interrompi con wake word: " + if (bargeInEnabled) "sì" else "no" }
+            label()
+            setOnClickListener {
+                bargeInEnabled = !bargeInEnabled
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_BARGE_IN, bargeInEnabled).apply()
+                label()
+            }
+        }
         val openMeldButton = Button(this).apply {
             text = "Apri Meld"
             setOnClickListener { openMeld() }
@@ -383,6 +398,7 @@ class MainActivity : Activity() {
             visibility = View.GONE
             addView(queryInput, LinearLayout.LayoutParams(0, wrap, 1f))
             addView(playButton)
+            addView(bargeInButton)
             addView(openMeldButton)
         }
         val homePanel = panel(
@@ -845,6 +861,30 @@ class MainActivity : Activity() {
         wakeListener.start { mainHandler.post { beginCommand(fromWake = true) } }
     }
 
+    /** Idle again: if the wake word cut the speech short, go straight to a new command; otherwise listen for the wake word. */
+    private fun resumeListening() {
+        if (bargeInPending && !voiceBusy) {
+            bargeInPending = false
+            beginCommand(fromWake = true)
+        } else {
+            startWake()
+        }
+    }
+
+    /** While the assistant speaks: listen for the wake word with echo cancellation (only if enabled). */
+    private fun startBargeInListener() {
+        if (!bargeInEnabled || !wakeEnabled || !visible || !hasMicPermission() || recorder.isRecording) return
+        bargeInActive = true
+        wakeListener.start(bargeIn = true) {
+            mainHandler.post {
+                bargeInActive = false
+                android.util.Log.i("EchoHome", "barge-in: wake word during speech")
+                bargeInPending = true
+                tts.stop() // the speech callbacks then end the session and resumeListening() starts the command
+            }
+        }
+    }
+
     /** "Parla" button: starts a command session, or ends the current one early. */
     private fun toggleListening() {
         if (speakingCount > 0) { // tap while the assistant talks = be quiet
@@ -912,7 +952,7 @@ class MainActivity : Activity() {
             }
         }
         sessionWasPlaying = false
-        startWake()
+        resumeListening()
     }
 
     private fun onUtterance(result: MicRecorder.Result) {
@@ -1070,14 +1110,20 @@ class MainActivity : Activity() {
     private fun speak(text: String, then: () -> Unit = {}) {
         if (speakingCount == 0) duckMusic()
         speakingCount++
-        wakeListener.stop() // never let the wake word detector hear our own voice
+        wakeListener.stop() // the normal detector must not hear our own voice
+        bargeInActive = false
+        startBargeInListener()
         tts.speak(text) {
             speakingCount--
             then()
             if (speakingCount == 0) {
+                if (bargeInActive) {
+                    wakeListener.stop() // back to the normal detector (resumeListening starts it)
+                    bargeInActive = false
+                }
                 unduckMusic()
                 afterSpeech?.let { afterSpeech = null; it() }
-                startWake() // no-op while a voice session is still running
+                resumeListening() // no-op while a voice session is still running
             }
         }
     }
@@ -1102,7 +1148,7 @@ class MainActivity : Activity() {
         speakingCount--
         if (speakingCount == 0) {
             afterSpeech?.let { afterSpeech = null; it() }
-            startWake()
+            resumeListening()
         }
     }
 
