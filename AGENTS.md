@@ -32,7 +32,7 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 ## Architecture (all in `app/src/main/java/com/echohome/app/`)
 | File | Role |
 |---|---|
-| `MainActivity.kt` | The only Activity (`singleTask`, landscape, immersive). Builds the dashboard in code (`buildUi()`), connects to Meld, orchestrates the voice session, executes intents. ~1000 lines: grows by section (`// ----` headers). |
+| `MainActivity.kt` | The only Activity (`singleTask`, landscape, immersive). Builds the UI in code (`buildUi()`): four full-screen panels (HOME hub, WEATHER, TIMERS, MUSIC), one visible at a time via `showScreen()`; commands pick their screen in `routeScreen()`, anything but HOME returns to HOME after 20 s (30 s for music) without touches. Connects to Meld, orchestrates the voice session, executes intents. ~1000 lines: grows by section (`// ----` headers). |
 | `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music (incl. shuffle/repeat), volume (incl. unmute), time, date, timer (incl. remaining), weather. Returns `null` for unknown text. |
 | `Replies.kt` | Pure Kotlin. Italian wording for answers; `describeDuration`, `rainSummary`, `rainTable`, WMO weather-code text. |
 | `Weather.kt` | `WeatherClient` (Open-Meteo, **fixed to San Giuliano Milanese**, no key) + `WeatherParser` (org.json). |

@@ -54,7 +54,8 @@ class MainActivity : Activity() {
         private const val RING_INTERVAL_MS = 900L
         private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
-        private const val WEATHER_PANEL_MS = 90_000L
+        private const val SCREEN_MS = 20_000L
+        private const val MUSIC_SCREEN_MS = 30_000L
         private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
         private const val PREF_WAKE = "wake_enabled"
@@ -84,11 +85,18 @@ class MainActivity : Activity() {
     private lateinit var nextButton: ImageButton
     private lateinit var previousButton: ImageButton
     private lateinit var timerView: TextView
-    private lateinit var weatherView: TextView // tomorrow's forecast, shown as an overlay
+    private lateinit var weatherTitleView: TextView
+    private lateinit var weatherTempView: TextView
+    private lateinit var weatherCondView: TextView
+    private lateinit var weatherDetailView: TextView
+    private lateinit var timerHintView: TextView
+    private lateinit var timerCancelView: TextView
+    private lateinit var homeTimerView: TextView // active timer, as a line on Home
+    private lateinit var homeMusicView: TextView // current track, as a line on Home
     private lateinit var clockView: TextView
     private lateinit var dayView: TextView
     private lateinit var dateView: TextView
-    private lateinit var weatherTopView: TextView // current temperature in the header
+    private lateinit var weatherTopView: TextView // current weather on Home
     private lateinit var assistantView: TextView
     private lateinit var debugPanel: LinearLayout
 
@@ -248,6 +256,7 @@ class MainActivity : Activity() {
         val white = Color.WHITE
         val grey = Color.rgb(170, 170, 170)
         val amber = Color.rgb(255, 193, 7)
+        val blue = Color.rgb(144, 202, 249)
         val light = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
 
         fun text(sizeSp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
@@ -256,7 +265,6 @@ class MainActivity : Activity() {
             if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
             includeFontPadding = false
         }
-        fun divider() = View(this).apply { setBackgroundColor(Color.rgb(50, 50, 50)) }
         fun icon(res: Int, sizeDp: Int, onClick: () -> Unit) = ImageButton(this).apply {
             setImageResource(res)
             setBackgroundColor(Color.TRANSPARENT)
@@ -265,74 +273,45 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply { marginEnd = dp(10) }
             setOnClickListener { onClick() }
         }
+        fun homeButton() = text(24f, grey).apply {
+            text = "‹ Home"
+            setPadding(0, dp(4), dp(24), dp(12))
+            setOnClickListener { showScreen(Screen.HOME) }
+        }
+        // Every screen is a full-height column; only one is visible at a time.
+        fun panel(vararg children: View) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            children.forEach { addView(it) }
+        }
 
-        // Top row: clock (+ timer) on the left, current weather on the right.
-        clockView = text(64f, white).apply {
+        // ---- Home: the hub. Big clock, date, current weather; timer and music only as a line when active.
+        clockView = text(96f, white).apply {
             typeface = light
+            gravity = Gravity.CENTER
             setOnLongClickListener { // hidden developer panel
                 debugPanel.visibility = if (debugPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
                 true
             }
         }
-        timerView = text(20f, amber).apply {
-            visibility = View.GONE
-            setOnClickListener { dismissTimer() } // tap = stop the alarm / cancel the countdown
-        }
-        weatherTopView = text(26f, white).apply {
+        dayView = text(30f, white).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER }
+        dateView = text(22f, grey).apply { letterSpacing = 0.1f; gravity = Gravity.CENTER }
+        weatherTopView = text(34f, white).apply {
             text = "–°"
-            setOnClickListener { refreshWeather() } // tap to refresh
+            gravity = Gravity.CENTER
+            setOnClickListener { openWeatherScreen() }
         }
-        val topRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(clockView)
-            addView(timerView, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(20); topMargin = dp(18) })
-            addView(View(this@MainActivity), LinearLayout.LayoutParams(0, 1, 1f))
-            addView(weatherTopView)
+        homeTimerView = text(28f, amber).apply {
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            setOnClickListener { showScreen(Screen.TIMERS) }
         }
-
-        // Date
-        dayView = text(24f, white).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER }
-        dateView = text(18f, grey).apply { letterSpacing = 0.1f; gravity = Gravity.CENTER }
-        val dateBlock = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            addView(dayView, LinearLayout.LayoutParams(match, wrap))
-            addView(dateView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
-        }
-
-        // Now playing: cover, title/artist/progress and the three controls underneath.
-        coverView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            setBackgroundColor(Color.rgb(28, 28, 28))
-        }
-        titleView = text(22f, white, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        artistView = text(17f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        progressView = text(13f, Color.rgb(120, 120, 120))
-        previousButton = icon(R.drawable.ic_prev, 48) { controller?.seekToPreviousMediaItem() }
-        pauseButton = icon(R.drawable.ic_play, 56) { togglePlayPause() }
-        nextButton = icon(R.drawable.ic_next, 48) { controller?.seekToNextMediaItem() }
-        val controls = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(previousButton)
-            addView(pauseButton)
-            addView(nextButton)
-        }
-        val textColumn = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), 0, 0, 0)
-            addView(titleView, LinearLayout.LayoutParams(match, wrap))
-            addView(artistView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
-            addView(progressView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2) })
-            addView(controls, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(4) })
-        }
-        val nowPlaying = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            addView(coverView, LinearLayout.LayoutParams(dp(104), dp(104)))
-            addView(textColumn, LinearLayout.LayoutParams(0, match, 1f))
+        homeMusicView = text(22f, grey).apply {
+            gravity = Gravity.CENTER
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            visibility = View.GONE
+            setOnClickListener { showScreen(Screen.MUSIC) }
         }
 
         // Hidden developer panel (long-press the clock): search field and shortcuts.
@@ -366,10 +345,113 @@ class MainActivity : Activity() {
             addView(playButton)
             addView(openMeldButton)
         }
+        val homePanel = panel(
+            clockView, dayView, dateView, weatherTopView, homeTimerView, homeMusicView, debugPanel,
+        ).apply {
+            gravity = Gravity.CENTER
+            listOf(clockView, dayView, dateView, weatherTopView, homeTimerView, homeMusicView, debugPanel).forEach {
+                it.layoutParams = LinearLayout.LayoutParams(match, wrap)
+            }
+            (dateView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(2)
+            (weatherTopView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(12)
+            (homeTimerView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+            (homeMusicView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
+            (debugPanel.layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
+            setPadding(dp(28), 0, dp(28), 0)
+            visibility = View.VISIBLE
+        }
 
-        // Bottom bar: message line on the left, assistant state on the right (tap = listen, long-press = wake word on/off).
-        statusView = text(15f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        assistantView = text(24f, white).apply {
+        // ---- Weather: only the weather.
+        weatherTitleView = text(22f, grey).apply { gravity = Gravity.CENTER }
+        weatherTempView = text(96f, white).apply { typeface = light; gravity = Gravity.CENTER }
+        weatherCondView = text(36f, blue).apply { gravity = Gravity.CENTER }
+        weatherDetailView = text(26f, grey).apply { gravity = Gravity.CENTER }
+        val weatherBody = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(weatherTitleView, LinearLayout.LayoutParams(match, wrap))
+            addView(weatherTempView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+            addView(weatherCondView, LinearLayout.LayoutParams(match, wrap))
+            addView(weatherDetailView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(12) })
+        }
+        val weatherPanel = panel(homeButton(), weatherBody).apply {
+            setPadding(dp(28), dp(8), dp(28), 0)
+            weatherBody.layoutParams = LinearLayout.LayoutParams(match, 0, 1f)
+        }
+
+        // ---- Timers: only the timers.
+        timerView = text(110f, amber).apply { typeface = light; gravity = Gravity.CENTER }
+        timerHintView = text(24f, grey).apply { gravity = Gravity.CENTER }
+        timerCancelView = text(28f, white).apply {
+            text = "Annulla timer"
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.rgb(45, 45, 45))
+            setPadding(dp(28), dp(12), dp(28), dp(12))
+            setOnClickListener { dismissTimer(); showScreen(Screen.HOME) }
+        }
+        val timerBody = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            addView(timerView, LinearLayout.LayoutParams(match, wrap))
+            addView(timerHintView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+            addView(timerCancelView, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(20) })
+            setOnClickListener { if (ringing) { dismissTimer(); showScreen(Screen.HOME) } } // tap = stop the alarm
+        }
+        val timersPanel = panel(homeButton(), timerBody).apply {
+            setPadding(dp(28), dp(8), dp(28), 0)
+            timerBody.layoutParams = LinearLayout.LayoutParams(match, 0, 1f)
+        }
+
+        // ---- Music: only the player.
+        coverView = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setBackgroundColor(Color.rgb(28, 28, 28))
+        }
+        titleView = text(32f, white, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        artistView = text(24f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        progressView = text(18f, Color.rgb(120, 120, 120))
+        previousButton = icon(R.drawable.ic_prev, 64) { controller?.seekToPreviousMediaItem() }
+        pauseButton = icon(R.drawable.ic_play, 76) { togglePlayPause() }
+        nextButton = icon(R.drawable.ic_next, 64) { controller?.seekToNextMediaItem() }
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(previousButton)
+            addView(pauseButton)
+            addView(nextButton)
+        }
+        val textColumn = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), 0, 0, 0)
+            addView(titleView, LinearLayout.LayoutParams(match, wrap))
+            addView(artistView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+            addView(progressView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+            addView(controls, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(10) })
+        }
+        val nowPlaying = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(coverView, LinearLayout.LayoutParams(dp(170), dp(170)))
+            addView(textColumn, LinearLayout.LayoutParams(0, match, 1f))
+        }
+        val musicPanel = panel(homeButton(), nowPlaying).apply {
+            setPadding(dp(28), dp(8), dp(28), 0)
+            nowPlaying.layoutParams = LinearLayout.LayoutParams(match, 0, 1f)
+        }
+
+        screens = mapOf(
+            Screen.HOME to homePanel, Screen.WEATHER to weatherPanel,
+            Screen.TIMERS to timersPanel, Screen.MUSIC to musicPanel,
+        )
+        val content = FrameLayout(this).apply {
+            screens.values.forEach { addView(it, FrameLayout.LayoutParams(match, match)) }
+        }
+
+        // Bottom bar on every screen: message line on the left, assistant state on the right
+        // (tap = listen, long-press = wake word on/off).
+        statusView = text(16f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        assistantView = text(28f, white).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             setPadding(dp(16), dp(6), 0, dp(6))
             setOnClickListener { toggleListening() }
@@ -378,40 +460,49 @@ class MainActivity : Activity() {
         val bottomBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(28), 0, dp(28), dp(6))
             addView(statusView, LinearLayout.LayoutParams(0, wrap, 1f))
             addView(assistantView)
         }
 
-        val column = LinearLayout(this).apply {
-            dashboard = this
+        dashboard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(28), dp(10), dp(28), dp(8))
-            addView(topRow, LinearLayout.LayoutParams(match, wrap))
-            addView(dateBlock, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(2); bottomMargin = dp(8) })
-            addView(divider(), LinearLayout.LayoutParams(match, dp(1)))
-            addView(nowPlaying, LinearLayout.LayoutParams(match, 0, 1f).apply { topMargin = dp(8); bottomMargin = dp(8) })
-            addView(debugPanel, LinearLayout.LayoutParams(match, wrap))
-            addView(divider(), LinearLayout.LayoutParams(match, dp(1)))
-            addView(bottomBar, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
+            addView(content, LinearLayout.LayoutParams(match, 0, 1f))
+            addView(bottomBar, LinearLayout.LayoutParams(match, wrap))
         }
-
-        // Tomorrow's forecast: overlay on top of everything, tap to dismiss.
-        weatherView = TextView(this).apply {
-            textSize = 14f
-            typeface = android.graphics.Typeface.MONOSPACE
-            setTextColor(Color.rgb(144, 202, 249))
-            setBackgroundColor(Color.BLACK)
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(28), dp(16), dp(28), dp(16))
-            visibility = View.GONE
-            setOnClickListener { visibility = View.GONE }
-        }
-
         return FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
-            addView(column, FrameLayout.LayoutParams(match, match))
-            addView(weatherView, FrameLayout.LayoutParams(match, match))
+            addView(dashboard, FrameLayout.LayoutParams(match, match))
         }
+    }
+
+    // ---- Screens ----------------------------------------------------------
+
+    private enum class Screen { HOME, WEATHER, TIMERS, MUSIC }
+
+    private lateinit var screens: Map<Screen, View>
+    private var screen = Screen.HOME
+    private val goHome = Runnable { if (ringing) scheduleGoHome() else showScreen(Screen.HOME) }
+
+    /** One feature on screen at a time; anything but Home falls back to Home after a quiet spell. */
+    private fun showScreen(target: Screen) {
+        screen = target
+        screens.forEach { (s, v) -> v.visibility = if (s == target) View.VISIBLE else View.GONE }
+        renderTimer()
+        renderProgress()
+        scheduleGoHome()
+    }
+
+    private fun scheduleGoHome() {
+        mainHandler.removeCallbacks(goHome)
+        if (screen == Screen.HOME) return
+        mainHandler.postDelayed(goHome, if (screen == Screen.MUSIC) MUSIC_SCREEN_MS else SCREEN_MS)
+    }
+
+    /** Any touch counts as activity: keeps the current screen up a little longer. */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.action == android.view.MotionEvent.ACTION_DOWN) scheduleGoHome()
+        return super.dispatchTouchEvent(ev)
     }
 
     // ---- Dashboard rendering ----------------------------------------------
@@ -532,6 +623,7 @@ class MainActivity : Activity() {
             statusView.text = "Meld non connesso"
             return null
         }
+        routeScreen(intent)
         when (intent) {
             EchoIntent.MusicPause -> controller?.pause()
             EchoIntent.MusicResume -> controller?.play()
@@ -588,10 +680,22 @@ class MainActivity : Activity() {
             null -> if (fromVoice) {
                 statusView.text = "Non ho capito: “$text” ($detail)"
             } else {
+                showScreen(Screen.MUSIC)
                 playSearch(text)
             }
         }
         return intent
+    }
+
+    /** Each command brings up its own screen; weather does it when the forecast arrives. */
+    private fun routeScreen(intent: EchoIntent?) {
+        when (intent) {
+            EchoIntent.MusicPause, EchoIntent.MusicResume, EchoIntent.MusicNext, EchoIntent.MusicPrevious,
+            is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, is EchoIntent.MusicSearch -> showScreen(Screen.MUSIC)
+            is EchoIntent.TimerCreate, EchoIntent.TimerRemaining -> showScreen(Screen.TIMERS)
+            EchoIntent.TimerCancel, EchoIntent.Time, EchoIntent.Date -> showScreen(Screen.HOME)
+            else -> Unit
+        }
     }
 
     // ---- Voice: wake word -> beep -> VAD + STT -> intent -> Meld ----------
@@ -806,7 +910,7 @@ class MainActivity : Activity() {
     private val weatherExecutor = Executors.newSingleThreadExecutor()
     private var lastForecast: Forecast? = null
     private var lastForecastAt = 0L
-    private val hideWeather = Runnable { weatherView.visibility = View.GONE }
+    private var weatherTomorrow = false
 
     /** Pending work (network) that must finish before a voice session may end, like speech. */
     private fun beginPending() { speakingCount++ }
@@ -862,6 +966,7 @@ class MainActivity : Activity() {
                     lastForecastAt = System.currentTimeMillis()
                 }
                 renderWeatherHeader()
+                if (f != null && screen == Screen.WEATHER) renderWeather(f, weatherTomorrow)
             }
         }
     }
@@ -871,17 +976,37 @@ class MainActivity : Activity() {
         weatherTopView.text = if (f == null) "–°" else "${f.nowTemp}° ${Replies.condition(f.nowCode)}"
     }
 
+    /** Fills the weather screen and brings it up. */
     private fun renderWeather(f: Forecast, tomorrow: Boolean) {
+        weatherTomorrow = tomorrow
         renderWeatherHeader()
-        weatherView.text = if (tomorrow) {
-            "${WeatherClient.CITY} · domani · min ${f.tomorrowMin}° · max ${f.tomorrowMax}° · ${Replies.condition(f.tomorrowCode)}\n" +
-                "Probabilità di pioggia per ora:\n" + Replies.rainTable(f.tomorrowRainByHour)
+        weatherTitleView.text = "${WeatherClient.CITY} · ${if (tomorrow) "domani" else "adesso"}"
+        if (tomorrow) {
+            weatherTempView.text = "${f.tomorrowMin}° / ${f.tomorrowMax}°"
+            weatherCondView.text = Replies.condition(f.tomorrowCode)
+            weatherDetailView.typeface = android.graphics.Typeface.DEFAULT
+            weatherDetailView.textSize = 26f
+            weatherDetailView.text = Replies.rainSummary(f.tomorrowRainByHour)
         } else {
-            "${WeatherClient.CITY} · adesso ${f.nowTemp}° · ${Replies.condition(f.nowCode)} · oggi min ${f.todayMin}° max ${f.todayMax}°"
+            weatherTempView.text = "${f.nowTemp}°"
+            weatherCondView.text = Replies.condition(f.nowCode)
+            weatherDetailView.typeface = android.graphics.Typeface.DEFAULT
+            weatherDetailView.textSize = 26f
+            weatherDetailView.text = "Oggi min ${f.todayMin}° · max ${f.todayMax}°"
         }
-        weatherView.visibility = View.VISIBLE
-        mainHandler.removeCallbacks(hideWeather)
-        mainHandler.postDelayed(hideWeather, WEATHER_PANEL_MS)
+        showScreen(Screen.WEATHER)
+    }
+
+    /** Tap on Home weather: show what we have now and refresh in the background. */
+    private fun openWeatherScreen() {
+        lastForecast?.let { renderWeather(it, false) } ?: run {
+            weatherTitleView.text = "${WeatherClient.CITY} · adesso"
+            weatherTempView.text = "–°"
+            weatherCondView.text = ""
+            weatherDetailView.text = "Meteo non ancora disponibile"
+            showScreen(Screen.WEATHER)
+        }
+        refreshWeather()
     }
 
     // ---- Timer ------------------------------------------------------------
@@ -891,6 +1016,7 @@ class MainActivity : Activity() {
         ringCount = 0
         statusView.text = Replies.TIMER_DONE
         renderTimer()
+        showScreen(Screen.TIMERS)
         mainHandler.removeCallbacks(ringTick)
         // Say it once, then the beeps keep going until dismissed.
         speak(Replies.TIMER_DONE) { if (ringing) mainHandler.post(ringTick) }
@@ -909,19 +1035,32 @@ class MainActivity : Activity() {
         return kitchenTimer.cancel() || wasRinging
     }
 
+    /** Home shows a one-line chip; the Timers screen shows the countdown big. */
     private fun renderTimer() {
         when {
             ringing -> {
-                timerView.text = "⏱ Timer scaduto · tocca per fermare"
-                timerView.visibility = View.VISIBLE
+                homeTimerView.text = "⏱ Timer scaduto"
+                timerView.text = "Scaduto!"
+                timerHintView.text = "Tocca per fermare"
+                timerCancelView.visibility = View.GONE
             }
             kitchenTimer.isRunning -> {
                 val total = (kitchenTimer.remainingMs() + 999) / 1000
-                timerView.text = "⏱ %d:%02d".format(total / 60, total % 60)
-                timerView.visibility = View.VISIBLE
+                val shown = if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60)
+                    else "%d:%02d".format(total / 60, total % 60)
+                homeTimerView.text = "⏱ $shown"
+                timerView.text = shown
+                timerHintView.text = "Timer"
+                timerCancelView.visibility = View.VISIBLE
             }
-            else -> timerView.visibility = View.GONE
+            else -> {
+                timerView.text = "Nessun timer"
+                timerHintView.text = "Di’: “timer 10 minuti”"
+                timerCancelView.visibility = View.GONE
+            }
         }
+        homeTimerView.visibility = if (ringing || kitchenTimer.isRunning) View.VISIBLE else View.GONE
+        timerView.textSize = if (ringing || kitchenTimer.isRunning) 110f else 40f
     }
 
     private fun togglePlayPause() {
@@ -949,6 +1088,7 @@ class MainActivity : Activity() {
         artistView.text = ""
         progressView.text = ""
         showCover(null, null)
+        homeMusicView.visibility = View.GONE
     }
 
     private fun renderState() {
@@ -959,6 +1099,16 @@ class MainActivity : Activity() {
             statusView.text = "" // connected again: drop the "Meld non connesso" line
         }
         pauseButton.setImageResource(if (c.isPlaying || c.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play)
+        renderHomeMusic()
+    }
+
+    /** Home mentions the track only while music is playing. */
+    private fun renderHomeMusic() {
+        val c = controller
+        val playing = c != null && c.currentMediaItem != null && (c.isPlaying || c.playWhenReady)
+        homeMusicView.visibility = if (playing) View.VISIBLE else View.GONE
+        val artist = artistView.text.toString()
+        homeMusicView.text = "♪ " + titleView.text + if (artist.isNotEmpty()) " · $artist" else ""
     }
 
     private fun renderMetadata(metadata: MediaMetadata) {
@@ -968,6 +1118,7 @@ class MainActivity : Activity() {
         artistView.text = artist.orEmpty()
         showCover(metadata.artworkData, metadata.artworkUri)
         renderProgress()
+        renderHomeMusic()
     }
 
     private fun renderProgress() {
