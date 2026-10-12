@@ -55,6 +55,7 @@ class MainActivity : Activity() {
         private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
         private const val SCREEN_MS = 20_000L
+        private const val STATUS_MS = 6_000L
         private const val MUSIC_SCREEN_MS = 30_000L
         private const val RING_MAX_BEEPS = 25
         private const val PREFS = "echohome"
@@ -95,7 +96,6 @@ class MainActivity : Activity() {
     private lateinit var homeMusicView: TextView // current track, as a line on Home
     private lateinit var clockView: TextView
     private lateinit var dayView: TextView
-    private lateinit var dateView: TextView
     private lateinit var weatherTopView: TextView // current weather on Home
     private lateinit var assistantView: TextView
     private lateinit var debugPanel: LinearLayout
@@ -286,7 +286,7 @@ class MainActivity : Activity() {
         }
 
         // ---- Home: the hub. Big clock, date, current weather; timer and music only as a line when active.
-        clockView = text(96f, white).apply {
+        clockView = text(92f, white).apply {
             typeface = light
             gravity = Gravity.CENTER
             setOnLongClickListener { // hidden developer panel
@@ -294,19 +294,18 @@ class MainActivity : Activity() {
                 true
             }
         }
-        dayView = text(30f, white).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER }
-        dateView = text(22f, grey).apply { letterSpacing = 0.1f; gravity = Gravity.CENTER }
-        weatherTopView = text(34f, white).apply {
+        dayView = text(20f, grey).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER } // "LUNEDÌ 12 OTTOBRE"
+        weatherTopView = text(24f, grey).apply {
             text = "–°"
             gravity = Gravity.CENTER
             setOnClickListener { openWeatherScreen() }
         }
-        homeTimerView = text(28f, amber).apply {
+        homeTimerView = text(26f, amber).apply {
             gravity = Gravity.CENTER
             visibility = View.GONE
             setOnClickListener { showScreen(Screen.TIMERS) }
         }
-        homeMusicView = text(22f, grey).apply {
+        homeMusicView = text(20f, grey).apply {
             gravity = Gravity.CENTER
             maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -346,14 +345,13 @@ class MainActivity : Activity() {
             addView(openMeldButton)
         }
         val homePanel = panel(
-            clockView, dayView, dateView, weatherTopView, homeTimerView, homeMusicView, debugPanel,
+            dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel,
         ).apply {
             gravity = Gravity.CENTER
-            listOf(clockView, dayView, dateView, weatherTopView, homeTimerView, homeMusicView, debugPanel).forEach {
+            listOf(dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel).forEach {
                 it.layoutParams = LinearLayout.LayoutParams(match, wrap)
             }
-            (dateView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(2)
-            (weatherTopView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(12)
+            (weatherTopView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
             (homeTimerView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
             (homeMusicView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
             (debugPanel.layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
@@ -465,6 +463,12 @@ class MainActivity : Activity() {
             addView(assistantView)
         }
 
+        statusView.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) = Unit
+            override fun afterTextChanged(e: android.text.Editable?) = showStatus()
+        })
+
         dashboard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(content, LinearLayout.LayoutParams(match, 0, 1f))
@@ -487,10 +491,20 @@ class MainActivity : Activity() {
     /** One feature on screen at a time; anything but Home falls back to Home after a quiet spell. */
     private fun showScreen(target: Screen) {
         screen = target
+        if (target == Screen.WEATHER) showStatus() else mainHandler.postDelayed(hideStatus, STATUS_MS)
         screens.forEach { (s, v) -> v.visibility = if (s == target) View.VISIBLE else View.GONE }
         renderTimer()
         renderProgress()
         scheduleGoHome()
+    }
+
+    private val hideStatus = Runnable { if (screen != Screen.WEATHER) statusView.visibility = View.INVISIBLE }
+
+    /** The message line is for the Weather screen; elsewhere it only flashes for a few seconds. */
+    private fun showStatus() {
+        statusView.visibility = if (statusView.text.isEmpty()) View.INVISIBLE else View.VISIBLE
+        mainHandler.removeCallbacks(hideStatus)
+        mainHandler.postDelayed(hideStatus, STATUS_MS)
     }
 
     private fun scheduleGoHome() {
@@ -521,8 +535,7 @@ class MainActivity : Activity() {
         dashboard.translationX = (hour % 4 - 2) * resources.displayMetrics.density * 2
         dashboard.translationY = (hour % 3 - 1) * resources.displayMetrics.density * 2
         clockView.text = timeFormat.format(now)
-        dayView.text = dayFormat.format(now).uppercase(java.util.Locale.ITALY)
-        dateView.text = dateFormat.format(now).uppercase(java.util.Locale.ITALY)
+        dayView.text = (dayFormat.format(now) + " " + dateFormat.format(now)).uppercase(java.util.Locale.ITALY)
     }
 
     /** ○ idle (wake word armed), ● listening, ◌ working. A dim ○ means the wake word is off. */
