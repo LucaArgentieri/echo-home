@@ -535,8 +535,13 @@ class MainActivity : Activity() {
         when (intent) {
             EchoIntent.MusicPause -> controller?.pause()
             EchoIntent.MusicResume -> controller?.play()
-            EchoIntent.MusicNext -> controller?.seekToNextMediaItem()
-            EchoIntent.MusicPrevious -> controller?.seekToPreviousMediaItem()
+            EchoIntent.MusicNext -> controller?.let {
+                if (it.hasNextMediaItem()) { it.seekToNextMediaItem(); reply(Replies.NEXT) } else reply(Replies.NO_NEXT)
+            }
+            EchoIntent.MusicPrevious -> controller?.let {
+                it.seekToPreviousMediaItem()
+                reply(Replies.PREVIOUS)
+            }
             is EchoIntent.MusicSearch -> playSearch(intent.query)
             is EchoIntent.MusicShuffle -> {
                 controller?.shuffleModeEnabled = intent.enabled

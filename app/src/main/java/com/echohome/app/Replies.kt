@@ -36,6 +36,9 @@ object Replies {
 
     fun timerSet(seconds: Int) = "Timer impostato per ${describeDuration(seconds)}."
     const val TIMER_CANCELLED = "Timer annullato."
+    const val NEXT = "Brano successivo."
+    const val PREVIOUS = "Brano precedente."
+    const val NO_NEXT = "Non c'è un brano successivo."
     const val NO_TIMER = "Nessun timer attivo."
     const val TIMER_DONE = "Il timer è scaduto."
 
