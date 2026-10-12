@@ -64,6 +64,8 @@ adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 min
 ```
 Use single quotes *inside* the double quotes (adb splits arguments on spaces). Emulate the Echo screen: `adb shell wm size 480x960 && adb shell wm density 200` (emulator is locked to landscape), reset with `wm size reset` / `wm density reset`.
 
+`scripts/echo-check.sh` (adb health snapshot / per-minute CSV of temperature and memory, never audio) and `docs/V0.4-primo-avvio.md` (Italian step list for the real Echo) support milestone V0.4.
+
 ## Conventions and pitfalls
 - Match the surrounding style; keep comments short and about *why*. No new abstractions without need.
 - `when` over `EchoIntent` must stay exhaustive: adding an intent means updating `runCommand` and `finishSession` in `MainActivity`, plus tests.

@@ -11,3 +11,4 @@ app/src/main/assets/kws/tokens.txt
 app/src/main/assets/silero-vad/
 gradle/wrapper/gradle-wrapper.jar
 app/src/main/assets/tts/
+echo-samples.csv

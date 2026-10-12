@@ -108,3 +108,6 @@ Schermata unica, nera e minimale, pensata per 960×480 (Echo Show 5), a schermo 
 - In basso a sinistra la riga dei messaggi (risposte, errori, «Meld non connesso»); a destra l'indicatore dell'assistente: `○` pronto, `● Ti ascolto…`, `◌ Elaboro…`. **Tocco = ascolto manuale** (e ferma l'ascolto in corso); **pressione lunga = wake word on/off** (`○` grigio = spenta).
 - Pressione lunga sull'ora = pannello sviluppatore (campo di ricerca, «Apri Meld»). «Che tempo farà domani» apre la tabella oraria a tutto schermo (tocco per chiuderla).
 - Per provare lo schermo dell'Echo nell'emulatore: `adb shell wm size 480x960 && adb shell wm density 200` (emulatore in landscape); `wm size reset` / `wm density reset` per tornare indietro.
+
+## Sull'Echo reale
+Lista di step per il primo avvio (flash, controlli, test del microfono e prestazioni): [docs/V0.4-primo-avvio.md](docs/V0.4-primo-avvio.md). Controlli via adb: `scripts/echo-check.sh info` e `scripts/echo-check.sh sample 60` (nessun audio registrato). Rischi del flash: issue #3.
