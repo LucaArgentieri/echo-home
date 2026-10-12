@@ -19,7 +19,7 @@ Validare una sola cosa prima di aggiungere wake word e speech-to-text:
 - **Meld** installato (`com.meld.app`) e avviato almeno una volta, con un account/brano utilizzabile. Senza Meld funzionano comunque ora, data, timer, volume e meteo; solo i comandi musicali no.
 
 ### 2. File grandi
-AAR di sherpa-onnx e modelli **non sono nel repository**: vanno scaricati e messi al loro posto prima di compilare (tabella in «File grandi (non nel repository)» più sotto).
+AAR di sherpa-onnx e modelli **non sono nel repository**: `scripts/fetch-models.sh` li scarica e li mette al loro posto (verifica SHA-256, si può rilanciare senza riscaricare). Dettaglio dei file in «File grandi (non nel repository)» più sotto.
 
 ### 3. Compila, installa, avvia
 ```
@@ -74,7 +74,7 @@ Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo s
 Il rilevatore legge 100 ms alla volta in un buffer riusato e li scarta; nessun file, nessun log dell'audio, nessuna rete. La registrazione del comando vive solo in RAM e viene azzerata dopo la trascrizione. Il log contiene solo l'evento «wake word detected».
 
 ### File grandi (non nel repository)
-Metterli prima di compilare:
+Li scarica `scripts/fetch-models.sh` (la tabella resta come riferimento):
 
 | Cosa | Da dove | Dove |
 |---|---|---|

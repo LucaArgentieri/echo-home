@@ -51,7 +51,7 @@ Meld integration: `MediaController` on `SessionToken(ComponentName("com.meld.app
 Gotchas learned: the sherpa KWS `-mobile` model fails (Reshape error) — use the non-mobile `gigaspeech-3.3M` model; `▁J` is not a token, "Jarvis" works as `▁JA R VI S`.
 
 ## Build, test, run
-Toolchain is pinned in `mise.toml` (JDK 17 + Android SDK). In a new shell: `eval "$(mise env)"`.
+Toolchain is pinned in `mise.toml` (JDK 17 + Android SDK). In a new shell: `eval "$(mise env)"`. Fresh clone: `scripts/fetch-models.sh` first (AAR + models, SHA-256 pinned in `scripts/models.sha256`; CI in `.github/workflows/build.yml` does the same).
 ```
 ./gradlew testDebugUnitTest assembleDebug        # JVM tests + debug APK
 adb install -r app/build/outputs/apk/debug/app-debug.apk

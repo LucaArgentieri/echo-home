@@ -1,0 +1,11 @@
+633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96  app/libs/sherpa-onnx-1.13.8.aar
+9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d  app/src/main/assets/whisper-base/base-decoder.int8.onnx
+0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11  app/src/main/assets/whisper-base/base-encoder.int8.onnx
+b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126  app/src/main/assets/whisper-base/base-tokens.txt
+6b99cbfd39246b6706f98ec13c7c50c6b299181f2474fa05cbc8046acc274396  app/src/main/assets/silero-vad/silero_vad_v5.onnx
+5b600d7ad2db980f77a520c3498bcdfc208c0cb6471558d1639a6eb4e1a01be6  app/src/main/assets/tts/it_IT-paola-medium.onnx
+95064d2a5d6b029c6710f9c83062a4401cbcee9678e419f381ca3b18a690983d  app/src/main/assets/tts/tokens.txt
+e40ff43297abe815e8898494c17e71bba2152d9d40fa3eb803f75d0f7533329a  app/src/main/assets/kws/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
+1e721676515bcd42a186979733981213c66c80db680e1cc582dfedf3be76e678  app/src/main/assets/kws/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx
+eae9da0c7e1e6c6a3f4cc42d167899c388f6c6701b94cb96320e4f55df79624c  app/src/main/assets/kws/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx
+fd2ded4050a55d2b1578870ba8697d02371980217806b7558bd0a5cc60f3ba53  app/src/main/assets/kws/tokens.txt

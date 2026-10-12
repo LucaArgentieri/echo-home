@@ -1,0 +1,28 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            app/libs/*.aar
+            app/src/main/assets/whisper-base
+            app/src/main/assets/silero-vad
+            app/src/main/assets/kws/*.onnx
+            app/src/main/assets/kws/tokens.txt
+            app/src/main/assets/tts
+          key: models-${{ hashFiles('scripts/fetch-models.sh', 'scripts/models.sha256') }}
+      - run: scripts/fetch-models.sh
+      - run: ./gradlew testDebugUnitTest assembleDebug
