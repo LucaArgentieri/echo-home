@@ -1,6 +1,6 @@
 # Echo Home v0.3
 
-Primo prototipo Android per controllare Meld da una UI esterna tramite AndroidX Media3.
+Smart display Android per Echo Show 5: controlla Meld tramite AndroidX Media3, con wake word, comandi vocali, meteo e timer, tutto in locale.
 
 ## Obiettivo di questa versione
 
@@ -11,34 +11,38 @@ Validare una sola cosa prima di aggiungere wake word e speech-to-text:
 3. Meld risolve la query con la propria pipeline di ricerca/voice-search e avvia la riproduzione.
 4. Echo Home può inviare pausa/riprendi, next e previous e leggere titolo, artista, cover e posizione.
 
-## Requisiti
+## Come avviarlo
 
-- Android Studio recente
-- JDK 17+
-- Android SDK 36 (cmdline-tools, platform 36, build-tools)
-- Un device/emulatore Android 8+; il target reale sarà LineageOS 18.1 / Android 11 sull'Echo Show 5 2nd gen
-- Meld release installato con package `com.meld.app`
+### 1. Prerequisiti
+- Con [mise](https://mise.jdx.dev) (consigliato): `mise install` nella cartella del progetto installa JDK 17 e Android SDK (versioni in `mise.toml`), poi in ogni nuova shell `eval "$(mise env)"`. In alternativa JDK 17+ e Android SDK 36 a mano (o Android Studio).
+- Un dispositivo o emulatore Android 8+ (target reale: Echo Show 5 2nd gen con LineageOS 18.1 / Android 11) con `adb` raggiungibile (`adb devices`).
+- **Meld** installato (`com.meld.app`) e avviato almeno una volta, con un account/brano utilizzabile. Senza Meld funzionano comunque ora, data, timer, volume e meteo; solo i comandi musicali no.
 
-## Build APK debug
+### 2. File grandi
+AAR di sherpa-onnx e modelli **non sono nel repository**: vanno scaricati e messi al loro posto prima di compilare (tabella in «File grandi (non nel repository)» più sotto).
 
+### 3. Compila, installa, avvia
 ```
-./gradlew assembleDebug
+./gradlew testDebugUnitTest assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n com.echohome.app/.MainActivity
 ```
+Il primo `./gradlew` scarica il wrapper Gradle (verificato con SHA-256). L'APK è circa 250 MB: l'installazione sull'emulatore richiede qualche secondo.
 
-Output: `app/build/outputs/apk/debug/app-debug.apk` (`adb install -r`).
+### 4. Primo utilizzo
+1. All'avvio l'app mostra orologio, data e meteo; in basso a sinistra compare «Meld non connesso» finché Meld non risponde.
+2. Concedi il permesso microfono quando richiesto (serve solo per la voce).
+3. Tocca l'indicatore `○` in basso a destra per parlare senza wake word; **pressione lunga** su `○` = attiva/disattiva la wake word «Hey Jarvis» / «Hey Echo» (di default spenta).
+4. Prova: «che ore sono», «timer cinque minuti», «che tempo fa domani», «metti i Radiohead».
+5. Pannello sviluppatore con campo di ricerca testuale: pressione lunga sull'orologio.
 
-## Test rapido
+### 5. Emulatore
+Emulatore con microfono del Mac: avvialo con `-allow-host-audio`. Per simulare lo schermo dell'Echo: `adb shell wm size 960x480 && adb shell wm density 200` (ripristino: `wm size reset`, `wm density reset`). L'audio via microfono del Mac è molto degradato: non giudicare da lì la precisione del riconoscimento.
 
-1. Apri questa cartella in Android Studio.
-2. Attendi il Gradle Sync.
-3. Installa Meld sullo stesso device/emulatore e avvialo almeno una volta.
-4. Esegui Echo Home.
-5. Lo stato deve diventare `Meld · connesso`.
-6. Scrivi ad esempio `Radiohead` e premi `Cerca e riproduci`.
-7. Verifica `Pausa`/`Riprendi`, `Next`, `Prev`, cover e titolo/artista.
-8. Chiudi Meld a forza: Echo Home deve tornare a «non connesso» e riconnettersi.
+Test rapido senza voce né tastiera (solo build debug): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.
 
-Nota: `INTERNET` serve solo per scaricare la cover dall'URL pubblicato da Meld.
+### Verifica con Meld (V0.1)
+Scrivi `Radiohead` nel pannello sviluppatore e premi `Cerca e riproduci`; poi prova pausa/riprendi, next, previous, cover e titolo/artista. Chiudendo Meld a forza Echo Home deve tornare a «non connesso» e riconnettersi. `INTERNET` serve solo per cover e meteo.
 
 ## Integrazione Meld usata
 
@@ -47,13 +51,9 @@ Nota: `INTERNET` serve solo per scaricare la cover dall'URL pubblicato da Meld.
 - Protocollo: AndroidX Media3 `MediaController` → `MediaLibraryService`
 - Ricerca: `MediaItem.RequestMetadata.searchQuery`
 
-## Cosa NON c'è ancora
+## Cosa non c'è ancora
 
-- meteo
-- timer
-- launcher/kiosk mode
-
-Queste funzionalità vengono aggiunte solo dopo aver validato la comunicazione Echo Home ↔ Meld.
+Launcher/kiosk, avvio al boot e ottimizzazione sull'Echo reale (V0.4); vedi issue #1.
 
 ## Gradle wrapper su macOS
 
@@ -63,12 +63,12 @@ Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo s
 
 `Hey Jarvis` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
 
-- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Hey Jarvis» e «Hey Echo»** sono attive insieme (una riga ciascuna in `keywords.txt`; punteggio 2.0, soglia 0.2). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Pulsante `Wake word: ON/OFF` (di default OFF: il microfono si apre solo se lo attivi). Si ferma quando l'app non è in primo piano.
+- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Hey Jarvis» e «Hey Echo»** sono attive insieme (una riga ciascuna in `keywords.txt`; punteggio 2.0, soglia 0.2). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Di default OFF: il microfono si apre solo se la attivi (pressione lunga sull'indicatore `○`). Si ferma quando l'app non è in primo piano.
 - **VAD**: Silero v5 (`assets/silero-vad`). Fine frase dopo 0,7 s di silenzio; massimo 8 s; 5 s senza parlato = annulla.
 - **STT**: Whisper base int8 in italiano (`assets/whisper-base`), offline. Elabora solo la parte parlata.
 - **Intent**: `IntentParser.kt`, regex + tolleranza di 1 carattere su verbi e comandi brevi. Test: `./gradlew testDebugUnitTest`.
 - **Musica**: dopo la wake word Meld va in pausa; riprende da sola se il comando non è «pausa» o una ricerca.
-- Il pulsante `Parla` salta la wake word.
+- Un tocco sull'indicatore `○` salta la wake word.
 
 ### Privacy del microfono
 Il rilevatore legge 100 ms alla volta in un buffer riusato e li scarta; nessun file, nessun log dell'audio, nessuna rete. La registrazione del comando vive solo in RAM e viene azzerata dopo la trascrizione. Il log contiene solo l'evento «wake word detected».
