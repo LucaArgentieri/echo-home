@@ -64,6 +64,7 @@ class MainActivity : Activity() {
         private const val SCREEN_MS = 20_000L
         private const val DUCK_VOLUME = 0.25f
         private const val NIGHT_BRIGHTNESS = 0.1f // 0..1 of the panel, only for this window
+        private const val DEEP_NIGHT_BRIGHTNESS = 0.01f // night and idle: the clock is only just visible
         private const val IDLE_BRIGHTNESS = 0.3f // daytime, after DIM_AFTER_MS without activity
         private const val DIM_AFTER_MS = 3 * 60 * 1000L
         private const val STT_IDLE_RELEASE_MS = 2 * 60 * 1000L // free Whisper's RAM when unused
@@ -599,11 +600,19 @@ class MainActivity : Activity() {
         if (idleDim) {
             idleDim = false
             applyBrightness()
+            // The refresh is skipped while the night screen sleeps: catch up when someone shows up.
+            if (System.currentTimeMillis() - lastForecastAt > WEATHER_REFRESH_MS) refreshWeather()
         }
+    }
+
+    private fun isNightHour(): Boolean {
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        return hour >= 20 || hour < 6
     }
 
     private fun applyBrightness() {
         val level = when {
+            nightMode && idleDim -> DEEP_NIGHT_BRIGHTNESS // nobody is looking: practically off, a touch brings it back
             nightMode -> NIGHT_BRIGHTNESS
             idleDim -> IDLE_BRIGHTNESS
             else -> WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -754,9 +763,13 @@ class MainActivity : Activity() {
             EchoIntent.VolumeUnmute -> setVolumePercent(volumeBeforeMute)
             EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
             EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
-            EchoIntent.WeatherNow -> showWeather(WeatherMode.NOW)
-            EchoIntent.WeatherTomorrow -> showWeather(WeatherMode.TOMORROW)
-            EchoIntent.WeatherWeek -> showWeather(WeatherMode.WEEK)
+            EchoIntent.WeatherNow -> showWeather(WeatherWhen.NOW)
+            EchoIntent.WeatherTomorrow -> showWeather(WeatherWhen.TOMORROW)
+            EchoIntent.WeatherWeek -> showWeather(WeatherWhen.WEEK)
+            is EchoIntent.WeatherIn -> {
+                val place = Cities.find(intent.city)
+                if (place == null) reply(Replies.unknownCity(intent.city)) else showWeather(intent.`when`, place)
+            }
             is EchoIntent.TimerCreate -> {
                 if (kitchenTimer.start(intent.seconds, intent.label) == null) {
                     reply(Replies.TOO_MANY_TIMERS)
@@ -894,7 +907,7 @@ class MainActivity : Activity() {
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
                 is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, is EchoIntent.TimerRemaining,
                 is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
-                is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, EchoIntent.WeatherWeek, null -> c.play()
+                is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, EchoIntent.WeatherWeek, is EchoIntent.WeatherIn, null -> c.play()
             }
         }
         sessionWasPlaying = false
@@ -1070,8 +1083,8 @@ class MainActivity : Activity() {
     private val weatherExecutor = Executors.newSingleThreadExecutor()
     private var lastForecast: Forecast? = null
     private var lastForecastAt = 0L
-    private enum class WeatherMode { NOW, TOMORROW, WEEK }
-    private var weatherMode = WeatherMode.NOW
+    private var weatherMode = WeatherWhen.NOW
+    private var weatherPlace: String? = null // null = home; set while the screen shows another city
 
     /** Pending work (network) that must finish before a voice session may end, like speech. */
     private fun beginPending() { speakingCount++ }
@@ -1084,30 +1097,33 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showWeather(mode: WeatherMode) {
+    /** [place] null = home. Other cities are fetched every time and never replace the home forecast. */
+    private fun showWeather(mode: WeatherWhen, place: City? = null) {
         statusView.text = "Leggo il meteo…"
         beginPending()
-        val cached = lastForecast?.takeIf { System.currentTimeMillis() - lastForecastAt < WEATHER_CACHE_MS }
+        val away = place?.takeIf { it.name != WeatherClient.CITY }
+        val cached = if (away != null) null else lastForecast?.takeIf { System.currentTimeMillis() - lastForecastAt < WEATHER_CACHE_MS }
         weatherExecutor.execute {
             val forecast = cached ?: try {
-                WeatherClient.fetch()
+                if (away != null) WeatherClient.fetch(away.lat, away.lon) else WeatherClient.fetch()
             } catch (_: Exception) {
-                lastForecast // stale data is better than none
+                if (away != null) null else lastForecast // stale home data is better than none
             }
             mainHandler.post {
                 if (forecast == null) {
                     reply(Replies.WEATHER_UNAVAILABLE)
                 } else {
-                    if (forecast !== lastForecast || cached == null) {
+                    if (away == null && (forecast !== lastForecast || cached == null)) {
                         lastForecast = forecast
                         lastForecastAt = System.currentTimeMillis()
                     }
-                    renderWeather(forecast, mode)
-                    reply(when (mode) {
-                        WeatherMode.NOW -> Replies.weatherNow(forecast)
-                        WeatherMode.TOMORROW -> Replies.weatherTomorrow(forecast)
-                        WeatherMode.WEEK -> Replies.weatherWeek(forecast)
-                    })
+                    renderWeather(forecast, mode, away?.name)
+                    val answer = when (mode) {
+                        WeatherWhen.NOW -> Replies.weatherNow(forecast)
+                        WeatherWhen.TOMORROW -> Replies.weatherTomorrow(forecast)
+                        WeatherWhen.WEEK -> Replies.weatherWeek(forecast)
+                    }
+                    reply(if (away != null) Replies.inCity(away.name) + ": " + answer.replaceFirstChar { it.lowercase() } else answer)
                 }
                 endPending()
             }
@@ -1116,7 +1132,7 @@ class MainActivity : Activity() {
 
     private val weatherRefresh = object : Runnable {
         override fun run() {
-            refreshWeather()
+            if (!(nightMode && idleDim)) refreshWeather() // no network while the dark screen idles
             if (visible) mainHandler.postDelayed(this, WEATHER_REFRESH_MS)
         }
     }
@@ -1145,27 +1161,28 @@ class MainActivity : Activity() {
                     weatherRetryMs = minOf(weatherRetryMs * 2, WEATHER_RETRY_MAX_MS)
                 }
                 renderWeatherHeader()
-                if (f != null && screen == Screen.WEATHER) renderWeather(f, weatherMode)
+                if (f != null && screen == Screen.WEATHER && weatherPlace == null) renderWeather(f, weatherMode)
             }
         }
     }
 
     private fun renderWeatherHeader() {
         val f = lastForecast
-        weatherTopView.text = if (f == null) "–°" else "${f.nowTemp}° ${Replies.condition(f.nowCode)}"
+        weatherTopView.text = if (f == null) "–°" else "${f.nowTemp}° ${Replies.icon(f.nowCode, isNightHour())} ${Replies.condition(f.nowCode)}"
     }
 
     /** Fills the weather screen and brings it up. */
-    private fun renderWeather(f: Forecast, mode: WeatherMode) {
+    private fun renderWeather(f: Forecast, mode: WeatherWhen, place: String? = null) {
         weatherMode = mode
+        weatherPlace = place
         renderWeatherHeader()
-        val week = mode == WeatherMode.WEEK
+        val week = mode == WeatherWhen.WEEK
         weatherTempView.visibility = if (week) View.GONE else View.VISIBLE
         weatherCondView.visibility = if (week) View.GONE else View.VISIBLE
-        weatherTitleView.text = "${WeatherClient.CITY} · " + when (mode) {
-            WeatherMode.NOW -> "adesso"
-            WeatherMode.TOMORROW -> "domani"
-            WeatherMode.WEEK -> "prossimi giorni"
+        weatherTitleView.text = "${place ?: WeatherClient.CITY} · " + when (mode) {
+            WeatherWhen.NOW -> "adesso"
+            WeatherWhen.TOMORROW -> "domani"
+            WeatherWhen.WEEK -> "prossimi giorni"
         }
         weatherDetailView.typeface = if (week) android.graphics.Typeface.MONOSPACE else android.graphics.Typeface.DEFAULT
         weatherDetailView.textSize = if (week) 22f else 26f
@@ -1175,24 +1192,25 @@ class MainActivity : Activity() {
             width = if (week) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
         }
         when (mode) {
-            WeatherMode.TOMORROW -> {
+            WeatherWhen.TOMORROW -> {
                 weatherTempView.text = "${f.tomorrowMin}° / ${f.tomorrowMax}°"
-                weatherCondView.text = Replies.condition(f.tomorrowCode)
+                weatherCondView.text = "${Replies.icon(f.tomorrowCode)} ${Replies.condition(f.tomorrowCode)}"
                 weatherDetailView.text = Replies.rainSummary(f.tomorrowRainByHour)
             }
-            WeatherMode.NOW -> {
+            WeatherWhen.NOW -> {
                 weatherTempView.text = "${f.nowTemp}°"
-                weatherCondView.text = Replies.condition(f.nowCode)
+                weatherCondView.text = "${Replies.icon(f.nowCode, isNightHour())} ${Replies.condition(f.nowCode)}"
                 weatherDetailView.text = "Oggi min ${f.todayMin}° · max ${f.todayMax}°"
             }
-            WeatherMode.WEEK -> weatherDetailView.text = Replies.weatherWeekRows(f).joinToString("\n")
+            WeatherWhen.WEEK -> weatherDetailView.text = Replies.weatherWeekRows(f).joinToString("\n")
         }
         showScreen(Screen.WEATHER)
     }
 
     /** Tap on Home weather: show what we have now and refresh in the background. */
     private fun openWeatherScreen() {
-        lastForecast?.let { renderWeather(it, WeatherMode.NOW) } ?: run {
+        weatherPlace = null
+        lastForecast?.let { renderWeather(it, WeatherWhen.NOW) } ?: run {
             weatherTitleView.text = "${WeatherClient.CITY} · adesso"
             weatherTempView.visibility = View.VISIBLE
             weatherCondView.visibility = View.VISIBLE

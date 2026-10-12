@@ -1,5 +1,7 @@
 package com.echohome.app
 
+enum class WeatherWhen { NOW, TOMORROW, WEEK }
+
 /** Commands Echo Home understands. Plain Kotlin on purpose: no Android deps, testable on the JVM. */
 sealed interface EchoIntent {
     data class MusicSearch(val query: String) : EchoIntent
@@ -20,6 +22,8 @@ sealed interface EchoIntent {
     data object WeatherNow : EchoIntent
     data object WeatherTomorrow : EchoIntent
     data object WeatherWeek : EchoIntent
+    /** Weather somewhere else: [city] is the spoken name (may not be a known place). */
+    data class WeatherIn(val city: String, val `when`: WeatherWhen) : EchoIntent
     data class TimerCreate(val seconds: Int, val label: String? = null) : EchoIntent
     /** No label: the ringing/nearest timer; [all]: every timer. */
     data class TimerCancel(val label: String? = null, val all: Boolean = false) : EchoIntent
@@ -67,6 +71,15 @@ object IntentParser {
     private val weatherNow = rx(
         "(?:che tempo (?:fa|c'è)(?: adesso| ora| oggi| in questo momento)?|(?:com'è|come è|dimmi) (?:il )?(?:tempo|meteo)(?: oggi| adesso| ora)?|" +
             "meteo(?: oggi| adesso)?|previsioni(?: del tempo)?|piove(?: adesso| ora)?)",
+    )
+    private val weatherCity = Regex(
+        "^(?:che tempo (?:fa|farà|ci sarà|c'è)|(?:com'è|come sarà|dimmi)? ?(?:il )?(?:meteo|tempo)|previsioni(?: del tempo)?|piove|pioverà)" +
+            " (?:a|ad|di|per|in|su) (.+)$",
+        RegexOption.IGNORE_CASE,
+    )
+    private val cityWhen = Regex(
+        "^(.+?)(?: (domani|oggi|adesso|ora|(?:nei |per i |per la |della |questa )?(?:prossimi giorni|prossima settimana|settimana)))?$",
+        RegexOption.IGNORE_CASE,
     )
     private val date = rx("(?:che|quale) (?:giorno|data) (?:è|e)(?: oggi)?|(?:dimmi )?(?:la )?data(?: di oggi)?|che giorno è oggi")
     private val timerRemaining = rx(
@@ -146,6 +159,7 @@ object IntentParser {
         weatherWeek.matches(cleaned) -> EchoIntent.WeatherWeek
         weatherTomorrow.matches(cleaned) -> EchoIntent.WeatherTomorrow
         weatherNow.matches(cleaned) -> EchoIntent.WeatherNow
+        weatherCity.matchEntire(cleaned) != null -> parseCityWeather(weatherCity.matchEntire(cleaned)!!.groupValues[1])
         time.matches(cleaned) -> EchoIntent.Time
         date.matches(cleaned) -> EchoIntent.Date
         timerRemaining.matchEntire(cleaned) != null ->
@@ -162,6 +176,18 @@ object IntentParser {
             ?.groupValues?.get(1)?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?.let { EchoIntent.MusicSearch(it) }
+    }
+
+    private fun parseCityWeather(rest: String): EchoIntent? {
+        val m = cityWhen.matchEntire(rest.trim()) ?: return null
+        val city = m.groupValues[1].trim()
+        val whenWord = m.groupValues[2].lowercase()
+        val mode = when {
+            whenWord == "domani" -> WeatherWhen.TOMORROW
+            whenWord.endsWith("giorni") || whenWord.endsWith("settimana") -> WeatherWhen.WEEK
+            else -> WeatherWhen.NOW
+        }
+        return if (city.isEmpty()) null else EchoIntent.WeatherIn(city, mode)
     }
 
     private fun fuzzy(cleaned: String): EchoIntent? {

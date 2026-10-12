@@ -211,4 +211,15 @@ class IntentParserTest {
         assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("che tempo fa domani"))
         assertEquals(EchoIntent.WeatherNow, IntentParser.parse("che tempo fa"))
     }
+
+    @Test fun weatherInOtherCities() {
+        assertEquals(EchoIntent.WeatherIn("Roma", WeatherWhen.NOW), IntentParser.parse("che tempo fa a Roma"))
+        assertEquals(EchoIntent.WeatherIn("Roma", WeatherWhen.NOW), IntentParser.parse("Meteo a Roma?"))
+        assertEquals(EchoIntent.WeatherIn("Napoli", WeatherWhen.TOMORROW), IntentParser.parse("che tempo farà a Napoli domani"))
+        assertEquals(EchoIntent.WeatherIn("Torino", WeatherWhen.WEEK), IntentParser.parse("previsioni per Torino nei prossimi giorni"))
+        assertEquals(EchoIntent.WeatherIn("Reggio Emilia", WeatherWhen.NOW), IntentParser.parse("com'è il tempo a Reggio Emilia oggi"))
+        // Home weather keeps its own intents.
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("meteo di domani"))
+        assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("meteo della settimana"))
+    }
 }

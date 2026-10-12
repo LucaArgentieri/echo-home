@@ -85,6 +85,27 @@ object Replies {
         else -> "variabile"
     }
 
+    /** Emoji for the screen; the sun becomes a moon at night. */
+    fun icon(code: Int, night: Boolean = false): String = when (code) {
+        0, 1 -> if (night) "🌙" else "☀️"
+        2 -> if (night) "☁️" else "⛅"
+        3 -> "☁️"
+        45, 48 -> "🌫️"
+        51, 53, 55, 56, 57, 61, 63, 65, 66, 67 -> "🌧️"
+        80, 81, 82 -> "🌦️"
+        71, 73, 75, 77, 85, 86 -> "❄️"
+        95, 96, 99 -> "⛈️"
+        else -> "🌡️"
+    }
+
+    fun unknownCity(name: String) = "Non conosco la città $name."
+
+    /** "A Roma" / "Ad Ancona": the place before the answer, for cities other than home. */
+    fun inCity(city: String): String {
+        val vowel = city.first().lowercaseChar() in "aeiou"
+        return (if (vowel) "Ad " else "A ") + city
+    }
+
     fun weatherNow(f: Forecast): String =
         "Adesso ci sono ${f.nowTemp} gradi, ${condition(f.nowCode)}. Oggi massima ${f.todayMax}, minima ${f.todayMin}" +
             if (f.todayRainMax >= 30) ", pioggia fino al ${f.todayRainMax} per cento." else "."

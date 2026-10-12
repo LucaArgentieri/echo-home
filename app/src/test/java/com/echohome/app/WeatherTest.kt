@@ -56,4 +56,26 @@ class WeatherTest {
         assertEquals(listOf("Domani  12° / 20°  coperto", "Mer     10° / 18°  pioggia", "Gio      9° / 19°  sereno"), Replies.weatherWeekRows(f))
         assertEquals(2, WeatherParser.parse(sample).days.size)
     }
+
+    @Test fun citiesAreFoundIgnoringCaseAccentsAndApostrophes() {
+        assertEquals("Roma", Cities.find("roma")?.name)
+        assertEquals("L'Aquila", Cities.find("L'Aquila")?.name)
+        assertEquals("L'Aquila", Cities.find("laquila")?.name)
+        assertEquals("Reggio Emilia", Cities.find("reggio  emilia")?.name)
+        assertEquals(null, Cities.find("Pizzighettone"))
+    }
+
+    @Test fun iconsAndCityPhrases() {
+        assertEquals("☀️", Replies.icon(0))
+        assertEquals("🌙", Replies.icon(0, night = true))
+        assertEquals("⛈️", Replies.icon(95))
+        assertEquals("A Roma", Replies.inCity("Roma"))
+        assertEquals("Ad Ancona", Replies.inCity("Ancona"))
+    }
+
+    @Test fun requestUrl() {
+        val url = WeatherClient.url(41.903, 12.496)
+        assertEquals(true, url.contains("latitude=41.903&longitude=12.496&"))
+        assertEquals(true, url.contains("timezone=Europe%2FRome"))
+    }
 }
