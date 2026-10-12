@@ -39,4 +39,21 @@ class WeatherTest {
         assertEquals(4, rows.size)
         assertEquals("00:", rows[0].take(3))
     }
+
+    @Test fun weekReplies() {
+        val days = listOf(
+            DayForecast("2026-10-12", 11, 21, 3, 0), // Monday = today
+            DayForecast("2026-10-13", 12, 20, 3, 0),
+            DayForecast("2026-10-14", 10, 18, 61, 80),
+            DayForecast("2026-10-15", 9, 19, 0, 0),
+        )
+        val f = Forecast(17, 3, 11, 21, 0, 12, 20, 3, IntArray(24), days)
+        assertEquals("mercoledì", Replies.weekday("2026-10-14"))
+        assertEquals(
+            "Domani coperto, tra 12 e 20 gradi. Mercoledì pioggia, tra 10 e 18 gradi. Giovedì sereno, tra 9 e 19 gradi.",
+            Replies.weatherWeek(f),
+        )
+        assertEquals(listOf("Domani  12° / 20°  coperto", "Mer     10° / 18°  pioggia", "Gio      9° / 19°  sereno"), Replies.weatherWeekRows(f))
+        assertEquals(2, WeatherParser.parse(sample).days.size)
+    }
 }

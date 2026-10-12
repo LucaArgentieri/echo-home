@@ -93,6 +93,24 @@ object Replies {
         "Domani minima ${f.tomorrowMin} gradi, massima ${f.tomorrowMax}, ${condition(f.tomorrowCode)}. " +
             rainSummary(f.tomorrowRainByHour)
 
+    private val weekdays = listOf("lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica")
+
+    /** "2026-10-14" -> "mercoledì". */
+    fun weekday(date: String): String = weekdays[java.time.LocalDate.parse(date).dayOfWeek.value - 1]
+
+    /** Spoken: tomorrow and the two days after it. */
+    fun weatherWeek(f: Forecast): String =
+        f.days.drop(1).take(3).mapIndexed { i, d ->
+            "${if (i == 0) "Domani" else weekday(d.date).replaceFirstChar { it.uppercase() }} ${condition(d.code)}, " +
+                "tra ${d.min} e ${d.max} gradi."
+        }.joinToString(" ").ifEmpty { WEATHER_UNAVAILABLE }
+
+    /** One line per day for the screen: "Mer   12° / 20°   coperto". */
+    fun weatherWeekRows(f: Forecast): List<String> = f.days.drop(1).take(5).mapIndexed { i, d ->
+        val name = if (i == 0) "Domani" else weekday(d.date).take(3).replaceFirstChar { it.uppercase() }
+        "%-7s %2d° / %2d°  %s".format(name, d.min, d.max, condition(d.code))
+    }
+
     /** One sentence about rain: wet periods (>= 40%) as hour ranges, or a calm statement. */
     fun rainSummary(byHour: IntArray): String {
         val max = byHour.max()

@@ -4,6 +4,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
+/** One day of the daily forecast; [date] is "2026-10-12". */
+class DayForecast(val date: String, val min: Int, val max: Int, val code: Int, val rainMax: Int)
+
 /** What the voice answers need from one Open-Meteo call. Temperatures are rounded to whole degrees. */
 class Forecast(
     val nowTemp: Int,
@@ -16,6 +19,8 @@ class Forecast(
     val tomorrowCode: Int,
     /** Rain probability (%) for each hour 0..23 of tomorrow. */
     val tomorrowRainByHour: IntArray,
+    /** Today first, then the following days. */
+    val days: List<DayForecast> = emptyList(),
 )
 
 object WeatherParser {
@@ -44,6 +49,15 @@ object WeatherParser {
             tomorrowMax = day("temperature_2m_max", 1),
             tomorrowCode = daily.getJSONArray("weather_code").getInt(1),
             tomorrowRainByHour = byHour,
+            days = (0 until daily.getJSONArray("time").length()).map { i ->
+                DayForecast(
+                    date = daily.getJSONArray("time").getString(i),
+                    min = day("temperature_2m_min", i),
+                    max = day("temperature_2m_max", i),
+                    code = daily.getJSONArray("weather_code").getInt(i),
+                    rainMax = daily.getJSONArray("precipitation_probability_max").optInt(i, 0),
+                )
+            },
         )
     }
 }
@@ -57,7 +71,7 @@ object WeatherClient {
     private const val URL_TEXT = "https://api.open-meteo.com/v1/forecast?latitude=45.396&longitude=9.291" +
         "&current=temperature_2m,weather_code&hourly=precipitation_probability" +
         "&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max" +
-        "&timezone=Europe%2FRome&forecast_days=2"
+        "&timezone=Europe%2FRome&forecast_days=6"
 
     /** Blocking: call from a background thread. Throws on network or format problems. */
     fun fetch(): Forecast {

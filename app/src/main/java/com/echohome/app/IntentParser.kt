@@ -19,6 +19,7 @@ sealed interface EchoIntent {
     data class TimerRemaining(val label: String? = null) : EchoIntent
     data object WeatherNow : EchoIntent
     data object WeatherTomorrow : EchoIntent
+    data object WeatherWeek : EchoIntent
     data class TimerCreate(val seconds: Int, val label: String? = null) : EchoIntent
     /** No label: the ringing/nearest timer; [all]: every timer. */
     data class TimerCancel(val label: String? = null, val all: Boolean = false) : EchoIntent
@@ -55,6 +56,10 @@ object IntentParser {
             "(?: (?:di|del|della|dello|delle|dei|degli|dell'|per|per il|per la|per le|per i) ?(.+)| ([^ ]+))?|timer (?:annulla|stop|basta)",
     )
     private val timerList = rx("(?:quanti timer (?:ho|ci sono|sono attivi)|(?:che|quali) timer (?:ho|ci sono)(?: attivi)?|(?:mostra|elenca|fammi vedere)(?: i| tutti i)? timer|lista(?: dei)? timer)")
+    private val weatherWeek = rx(
+        "(?:che tempo (?:farà|fa|ci sarà|c'è)|(?:com'è|come sarà|dimmi)? ?(?:il )?(?:meteo|tempo)|previsioni(?: del tempo)?|meteo)" +
+            "(?: (?:nei|per i|dei|per la|della|questa|nella|per))? ?(?:prossimi giorni|prossima settimana|settimana|giorni)",
+    )
     private val weatherTomorrow = rx(
         "(?:che tempo (?:farà|fa|ci sarà|c'è) domani|(?:com'è|come sarà|dimmi)? ?(?:il )?(?:meteo|tempo) (?:di |per )?domani|" +
             "previsioni(?: del tempo)?(?: per| di)? domani|domani (?:che tempo fa|piove|pioverà))",
@@ -138,6 +143,7 @@ object IntentParser {
         volumeDown.matches(cleaned) -> EchoIntent.VolumeDown
         volumeSet.matchEntire(cleaned)?.groupValues?.get(1)?.let { parseNumber(it) } != null ->
             EchoIntent.VolumeSet(parseNumber(volumeSet.matchEntire(cleaned)!!.groupValues[1])!!.coerceIn(0, 100))
+        weatherWeek.matches(cleaned) -> EchoIntent.WeatherWeek
         weatherTomorrow.matches(cleaned) -> EchoIntent.WeatherTomorrow
         weatherNow.matches(cleaned) -> EchoIntent.WeatherNow
         time.matches(cleaned) -> EchoIntent.Time

@@ -201,4 +201,14 @@ class IntentParserTest {
         assertEquals(false, IntentParser.labelMatches("pasta", "uova"))
         assertEquals(false, IntentParser.labelMatches(null, "uova"))
     }
+
+    @Test
+    fun weatherWeek() {
+        assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("che tempo fa nei prossimi giorni"))
+        assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("meteo della settimana"))
+        assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("previsioni per la settimana"))
+        assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("che tempo farà questa settimana"))
+        assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("che tempo fa domani"))
+        assertEquals(EchoIntent.WeatherNow, IntentParser.parse("che tempo fa"))
+    }
 }

@@ -684,8 +684,9 @@ class MainActivity : Activity() {
             EchoIntent.VolumeUnmute -> setVolumePercent(volumeBeforeMute)
             EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
             EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
-            EchoIntent.WeatherNow -> showWeather(tomorrow = false)
-            EchoIntent.WeatherTomorrow -> showWeather(tomorrow = true)
+            EchoIntent.WeatherNow -> showWeather(WeatherMode.NOW)
+            EchoIntent.WeatherTomorrow -> showWeather(WeatherMode.TOMORROW)
+            EchoIntent.WeatherWeek -> showWeather(WeatherMode.WEEK)
             is EchoIntent.TimerCreate -> {
                 if (kitchenTimer.start(intent.seconds, intent.label) == null) {
                     reply(Replies.TOO_MANY_TIMERS)
@@ -822,7 +823,7 @@ class MainActivity : Activity() {
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
                 is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, is EchoIntent.TimerRemaining,
                 is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
-                is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, null -> c.play()
+                is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, EchoIntent.WeatherWeek, null -> c.play()
             }
         }
         sessionWasPlaying = false
@@ -997,7 +998,8 @@ class MainActivity : Activity() {
     private val weatherExecutor = Executors.newSingleThreadExecutor()
     private var lastForecast: Forecast? = null
     private var lastForecastAt = 0L
-    private var weatherTomorrow = false
+    private enum class WeatherMode { NOW, TOMORROW, WEEK }
+    private var weatherMode = WeatherMode.NOW
 
     /** Pending work (network) that must finish before a voice session may end, like speech. */
     private fun beginPending() { speakingCount++ }
@@ -1010,7 +1012,7 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun showWeather(tomorrow: Boolean) {
+    private fun showWeather(mode: WeatherMode) {
         statusView.text = "Leggo il meteo…"
         beginPending()
         val cached = lastForecast?.takeIf { System.currentTimeMillis() - lastForecastAt < WEATHER_CACHE_MS }
@@ -1028,8 +1030,12 @@ class MainActivity : Activity() {
                         lastForecast = forecast
                         lastForecastAt = System.currentTimeMillis()
                     }
-                    renderWeather(forecast, tomorrow)
-                    reply(if (tomorrow) Replies.weatherTomorrow(forecast) else Replies.weatherNow(forecast))
+                    renderWeather(forecast, mode)
+                    reply(when (mode) {
+                        WeatherMode.NOW -> Replies.weatherNow(forecast)
+                        WeatherMode.TOMORROW -> Replies.weatherTomorrow(forecast)
+                        WeatherMode.WEEK -> Replies.weatherWeek(forecast)
+                    })
                 }
                 endPending()
             }
@@ -1067,7 +1073,7 @@ class MainActivity : Activity() {
                     weatherRetryMs = minOf(weatherRetryMs * 2, WEATHER_RETRY_MAX_MS)
                 }
                 renderWeatherHeader()
-                if (f != null && screen == Screen.WEATHER) renderWeather(f, weatherTomorrow)
+                if (f != null && screen == Screen.WEATHER) renderWeather(f, weatherMode)
             }
         }
     }
@@ -1078,30 +1084,46 @@ class MainActivity : Activity() {
     }
 
     /** Fills the weather screen and brings it up. */
-    private fun renderWeather(f: Forecast, tomorrow: Boolean) {
-        weatherTomorrow = tomorrow
+    private fun renderWeather(f: Forecast, mode: WeatherMode) {
+        weatherMode = mode
         renderWeatherHeader()
-        weatherTitleView.text = "${WeatherClient.CITY} · ${if (tomorrow) "domani" else "adesso"}"
-        if (tomorrow) {
-            weatherTempView.text = "${f.tomorrowMin}° / ${f.tomorrowMax}°"
-            weatherCondView.text = Replies.condition(f.tomorrowCode)
-            weatherDetailView.typeface = android.graphics.Typeface.DEFAULT
-            weatherDetailView.textSize = 26f
-            weatherDetailView.text = Replies.rainSummary(f.tomorrowRainByHour)
-        } else {
-            weatherTempView.text = "${f.nowTemp}°"
-            weatherCondView.text = Replies.condition(f.nowCode)
-            weatherDetailView.typeface = android.graphics.Typeface.DEFAULT
-            weatherDetailView.textSize = 26f
-            weatherDetailView.text = "Oggi min ${f.todayMin}° · max ${f.todayMax}°"
+        val week = mode == WeatherMode.WEEK
+        weatherTempView.visibility = if (week) View.GONE else View.VISIBLE
+        weatherCondView.visibility = if (week) View.GONE else View.VISIBLE
+        weatherTitleView.text = "${WeatherClient.CITY} · " + when (mode) {
+            WeatherMode.NOW -> "adesso"
+            WeatherMode.TOMORROW -> "domani"
+            WeatherMode.WEEK -> "prossimi giorni"
+        }
+        weatherDetailView.typeface = if (week) android.graphics.Typeface.MONOSPACE else android.graphics.Typeface.DEFAULT
+        weatherDetailView.textSize = if (week) 22f else 26f
+        // The day table is one left-aligned block, centred as a whole, so the columns line up.
+        weatherDetailView.gravity = if (week) Gravity.START else Gravity.CENTER
+        weatherDetailView.layoutParams = (weatherDetailView.layoutParams as LinearLayout.LayoutParams).apply {
+            width = if (week) ViewGroup.LayoutParams.WRAP_CONTENT else ViewGroup.LayoutParams.MATCH_PARENT
+        }
+        when (mode) {
+            WeatherMode.TOMORROW -> {
+                weatherTempView.text = "${f.tomorrowMin}° / ${f.tomorrowMax}°"
+                weatherCondView.text = Replies.condition(f.tomorrowCode)
+                weatherDetailView.text = Replies.rainSummary(f.tomorrowRainByHour)
+            }
+            WeatherMode.NOW -> {
+                weatherTempView.text = "${f.nowTemp}°"
+                weatherCondView.text = Replies.condition(f.nowCode)
+                weatherDetailView.text = "Oggi min ${f.todayMin}° · max ${f.todayMax}°"
+            }
+            WeatherMode.WEEK -> weatherDetailView.text = Replies.weatherWeekRows(f).joinToString("\n")
         }
         showScreen(Screen.WEATHER)
     }
 
     /** Tap on Home weather: show what we have now and refresh in the background. */
     private fun openWeatherScreen() {
-        lastForecast?.let { renderWeather(it, false) } ?: run {
+        lastForecast?.let { renderWeather(it, WeatherMode.NOW) } ?: run {
             weatherTitleView.text = "${WeatherClient.CITY} · adesso"
+            weatherTempView.visibility = View.VISIBLE
+            weatherCondView.visibility = View.VISIBLE
             weatherTempView.text = "–°"
             weatherCondView.text = ""
             weatherDetailView.text = "Meteo non ancora disponibile"
