@@ -761,6 +761,7 @@ class MainActivity : Activity() {
                 setVolumePercent(intent.percent)
             }
             EchoIntent.VolumeUnmute -> setVolumePercent(volumeBeforeMute)
+            is EchoIntent.VolumeNudge -> setVolumePercent(volumePercent() + if (intent.up) VOLUME_STEP / 2 else -VOLUME_STEP / 2)
             EchoIntent.VolumeUp -> setVolumePercent(volumePercent() + VOLUME_STEP)
             EchoIntent.VolumeDown -> setVolumePercent(volumePercent() - VOLUME_STEP)
             EchoIntent.WeatherNow -> showWeather(WeatherWhen.NOW)
@@ -906,7 +907,7 @@ class MainActivity : Activity() {
                 // Anything that does not itself change playback: put the music back.
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
                 is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, is EchoIntent.TimerRemaining,
-                is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
+                is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, is EchoIntent.VolumeNudge, EchoIntent.Time,
                 is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, EchoIntent.WeatherWeek, is EchoIntent.WeatherIn, null -> c.play()
             }
         }
@@ -1010,15 +1011,23 @@ class MainActivity : Activity() {
 
     private var volumeBeforeMute = 30 // restored by "riattiva l'audio"
 
+    // Fine volume: the system step plus Meld's player volume as a trim (see VolumeMath).
+    private fun canTrim() = controller?.isCommandAvailable(Player.COMMAND_SET_VOLUME) == true
+
+    private fun currentTrim(): Float = volumeBeforeDuck ?: controller?.volume ?: 1f
+
     private fun volumePercent(): Int {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        return Math.round(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100f / max)
+        return VolumeMath.percent(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC), max, currentTrim())
     }
 
     private fun setVolumePercent(percent: Int) {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val clamped = percent.coerceIn(0, 100)
-        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, Math.round(clamped * max / 100f), 0)
+        val (step, trim) = VolumeMath.split(percent, max, canTrim())
+        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, step, 0)
+        if (canTrim()) {
+            if (volumeBeforeDuck != null) volumeBeforeDuck = trim else controller?.volume = trim // ducked: restored later
+        }
         reply(Replies.volume(volumePercent()))
     }
 

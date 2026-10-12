@@ -11,6 +11,8 @@ sealed interface EchoIntent {
     data object MusicPrevious : EchoIntent
     data object VolumeUp : EchoIntent
     data object VolumeDown : EchoIntent
+    /** "un po' più forte": half a normal step. */
+    data class VolumeNudge(val up: Boolean) : EchoIntent
     data class VolumeSet(val percent: Int) : EchoIntent
     data object VolumeUnmute : EchoIntent
     data object Time : EchoIntent
@@ -45,6 +47,8 @@ object IntentParser {
 
     private val volumeUp = rx("(?:alza|aumenta|incrementa)(?: il)?(?: volume)?|volume (?:su|alto|più alto)|più forte|(?:metti|fai) (?:più forte|il volume più alto)")
     private val volumeDown = rx("(?:abbassa|diminuisci|riduci)(?: il)?(?: volume)?|volume (?:giù|basso|più basso)|più piano|(?:metti|fai) (?:più piano|il volume più basso)")
+    private val nudgeUp = rx("(?:alza|aumenta)(?: il volume)? (?:un po'?|un pochino|leggermente)(?: il volume)?|(?:un po'?|un pochino|leggermente) (?:pi[uù] forte|pi[uù] alto|su)|volume (?:un po'?|un pochino) (?:pi[uù] alto|su)")
+    private val nudgeDown = rx("(?:abbassa|diminuisci)(?: il volume)? (?:un po'?|un pochino|leggermente)(?: il volume)?|(?:un po'?|un pochino|leggermente) (?:pi[uù] piano|pi[uù] basso|giù)|volume (?:un po'?|un pochino) (?:pi[uù] basso|giù)")
     private val volumeMax = rx("(?:metti )?(?:il )?volume (?:al )?massimo")
     private val volumeMute = rx("(?:metti )?(?:il )?volume (?:al )?minimo|silenzio|muto")
     private val volumeUnmute = rx("(?:riattiva|ripristina|rimetti)(?: l'| il)? ?(?:audio|volume)|(?:togli|disattiva) (?:il )?(?:muto|silenzio)")
@@ -152,6 +156,8 @@ object IntentParser {
         volumeMax.matches(cleaned) -> EchoIntent.VolumeSet(100)
         volumeMute.matches(cleaned) -> EchoIntent.VolumeSet(0)
         volumeUnmute.matches(cleaned) -> EchoIntent.VolumeUnmute
+        nudgeUp.matches(cleaned) -> EchoIntent.VolumeNudge(true)
+        nudgeDown.matches(cleaned) -> EchoIntent.VolumeNudge(false)
         volumeUp.matches(cleaned) -> EchoIntent.VolumeUp
         volumeDown.matches(cleaned) -> EchoIntent.VolumeDown
         volumeSet.matchEntire(cleaned)?.groupValues?.get(1)?.let { parseNumber(it) } != null ->

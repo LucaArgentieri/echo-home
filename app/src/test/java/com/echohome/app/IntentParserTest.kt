@@ -222,4 +222,12 @@ class IntentParserTest {
         assertEquals(EchoIntent.WeatherTomorrow, IntentParser.parse("meteo di domani"))
         assertEquals(EchoIntent.WeatherWeek, IntentParser.parse("meteo della settimana"))
     }
+
+    @Test fun volumeNudges() {
+        assertEquals(EchoIntent.VolumeNudge(true), IntentParser.parse("un po' più forte"))
+        assertEquals(EchoIntent.VolumeNudge(true), IntentParser.parse("alza un po' il volume"))
+        assertEquals(EchoIntent.VolumeNudge(false), IntentParser.parse("abbassa un pochino"))
+        assertEquals(EchoIntent.VolumeNudge(false), IntentParser.parse("un po' più piano"))
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("più forte"))
+    }
 }
