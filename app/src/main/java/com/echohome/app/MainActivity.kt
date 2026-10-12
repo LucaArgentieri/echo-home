@@ -85,7 +85,7 @@ class MainActivity : Activity() {
     private lateinit var pauseButton: ImageButton
     private lateinit var nextButton: ImageButton
     private lateinit var previousButton: ImageButton
-    private lateinit var timerView: TextView
+    private lateinit var timerRows: List<Pair<TextView, TextView>> // (name, time) per timer on the Timers screen
     private lateinit var weatherTitleView: TextView
     private lateinit var weatherTempView: TextView
     private lateinit var weatherCondView: TextView
@@ -113,6 +113,7 @@ class MainActivity : Activity() {
 
     // Timer alarm: beeps every RING_INTERVAL_MS until dismissed (voice, tap on the timer, or timeout).
     private var ringing = false
+    private val ringLabels = mutableListOf<String?>() // timers that fired and are not dismissed yet
     private var ringCount = 0
     private val ringTick = object : Runnable {
         override fun run() {
@@ -176,7 +177,7 @@ class MainActivity : Activity() {
         recorder = MicRecorder(assets)
         wakeListener = WakeWordListener(assets)
         tts = TextToSpeech(applicationContext)
-        kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging() }
+        kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging(it) }
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
         window.statusBarColor = Color.BLACK
         window.navigationBarColor = Color.BLACK
@@ -377,23 +378,31 @@ class MainActivity : Activity() {
             weatherBody.layoutParams = LinearLayout.LayoutParams(match, 0, 1f)
         }
 
-        // ---- Timers: only the timers.
-        timerView = text(110f, amber).apply { typeface = light; gravity = Gravity.CENTER }
+        // ---- Timers: only the timers (one big, or up to four stacked).
+        timerRows = List(KitchenTimer.MAX_TIMERS) {
+            Pair(
+                text(20f, grey).apply { gravity = Gravity.CENTER; visibility = View.GONE },
+                text(48f, amber).apply { typeface = light; gravity = Gravity.CENTER; visibility = View.GONE },
+            )
+        }
         timerHintView = text(24f, grey).apply { gravity = Gravity.CENTER }
-        timerCancelView = text(28f, white).apply {
+        timerCancelView = text(24f, white).apply {
             text = "Annulla timer"
             gravity = Gravity.CENTER
             setBackgroundColor(Color.rgb(45, 45, 45))
-            setPadding(dp(28), dp(12), dp(28), dp(12))
-            setOnClickListener { dismissTimer(); showScreen(Screen.HOME) }
+            setPadding(dp(28), dp(10), dp(28), dp(10))
+            setOnClickListener { cancelAllFromScreen() }
         }
         val timerBody = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            addView(timerView, LinearLayout.LayoutParams(match, wrap))
-            addView(timerHintView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(4) })
-            addView(timerCancelView, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(20) })
-            setOnClickListener { if (ringing) { dismissTimer(); showScreen(Screen.HOME) } } // tap = stop the alarm
+            timerRows.forEach { (label, time) ->
+                addView(label, LinearLayout.LayoutParams(match, wrap))
+                addView(time, LinearLayout.LayoutParams(match, wrap))
+            }
+            addView(timerHintView, LinearLayout.LayoutParams(match, wrap).apply { topMargin = dp(6) })
+            addView(timerCancelView, LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(14) })
+            setOnClickListener { if (ringing) { stopRinging(); showScreen(Screen.HOME) } } // tap = stop the alarm
         }
         val timersPanel = panel(homeButton(), timerBody).apply {
             setPadding(dp(28), dp(8), dp(28), 0)
@@ -666,14 +675,14 @@ class MainActivity : Activity() {
             EchoIntent.WeatherNow -> showWeather(tomorrow = false)
             EchoIntent.WeatherTomorrow -> showWeather(tomorrow = true)
             is EchoIntent.TimerCreate -> {
-                kitchenTimer.start(intent.seconds)
-                renderTimer()
-                reply(Replies.timerSet(intent.seconds))
+                if (kitchenTimer.start(intent.seconds, intent.label) == null) {
+                    reply(Replies.TOO_MANY_TIMERS)
+                } else {
+                    renderTimer()
+                    reply(Replies.timerSet(intent.seconds, intent.label))
+                }
             }
-            EchoIntent.TimerCancel -> {
-                val had = dismissTimer()
-                reply(if (had) Replies.TIMER_CANCELLED else Replies.NO_TIMER)
-            }
+            is EchoIntent.TimerCancel -> reply(cancelTimers(intent))
             EchoIntent.Date -> {
                 val now = java.util.Date()
                 reply(Replies.date(
@@ -681,9 +690,13 @@ class MainActivity : Activity() {
                     java.text.SimpleDateFormat("MMMM", java.util.Locale.ITALY).format(now),
                 ))
             }
-            EchoIntent.TimerRemaining -> {
-                val left = kitchenTimer.remainingMs()
-                reply(if (kitchenTimer.isRunning && left > 0) Replies.timerRemaining(((left + 999) / 1000).toInt()) else Replies.NO_TIMER)
+            is EchoIntent.TimerRemaining -> {
+                val found = if (intent.label == null) kitchenTimer.active() else kitchenTimer.find(intent.label)
+                reply(when {
+                    found.isNotEmpty() -> Replies.timersRemaining(found.map { it.label to secondsLeft(it) })
+                    intent.label != null -> Replies.timerNotFound(intent.label)
+                    else -> Replies.NO_TIMER
+                })
             }
             EchoIntent.Time -> {
                 val now = java.util.Calendar.getInstance()
@@ -705,8 +718,8 @@ class MainActivity : Activity() {
         when (intent) {
             EchoIntent.MusicPause, EchoIntent.MusicResume, EchoIntent.MusicNext, EchoIntent.MusicPrevious,
             is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, is EchoIntent.MusicSearch -> showScreen(Screen.MUSIC)
-            is EchoIntent.TimerCreate, EchoIntent.TimerRemaining -> showScreen(Screen.TIMERS)
-            EchoIntent.TimerCancel, EchoIntent.Time, EchoIntent.Date -> showScreen(Screen.HOME)
+            is EchoIntent.TimerCreate, is EchoIntent.TimerRemaining -> showScreen(Screen.TIMERS)
+            is EchoIntent.TimerCancel, EchoIntent.Time, EchoIntent.Date -> showScreen(Screen.HOME)
             else -> Unit
         }
     }
@@ -795,9 +808,9 @@ class MainActivity : Activity() {
                 EchoIntent.MusicPause, is EchoIntent.MusicSearch -> Unit // stay paused / search starts playback
                 // Anything that does not itself change playback: put the music back.
                 EchoIntent.MusicNext, EchoIntent.MusicPrevious, EchoIntent.MusicResume,
-                is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, EchoIntent.TimerRemaining,
+                is EchoIntent.MusicShuffle, is EchoIntent.MusicRepeat, EchoIntent.VolumeUnmute, EchoIntent.Date, is EchoIntent.TimerRemaining,
                 is EchoIntent.VolumeSet, EchoIntent.VolumeUp, EchoIntent.VolumeDown, EchoIntent.Time,
-                is EchoIntent.TimerCreate, EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, null -> c.play()
+                is EchoIntent.TimerCreate, is EchoIntent.TimerCancel, EchoIntent.WeatherNow, EchoIntent.WeatherTomorrow, null -> c.play()
             }
         }
         sessionWasPlaying = false
@@ -1024,56 +1037,106 @@ class MainActivity : Activity() {
 
     // ---- Timer ------------------------------------------------------------
 
-    private fun startRinging() {
+    private fun secondsLeft(t: KitchenTimer.Timer) = ((kitchenTimer.remainingMs(t) + 999) / 1000).toInt()
+
+    private fun startRinging(t: KitchenTimer.Timer) {
         ringing = true
         ringCount = 0
-        statusView.text = Replies.TIMER_DONE
+        ringLabels += t.label
+        statusView.text = Replies.timerDone(t.label)
         renderTimer()
         showScreen(Screen.TIMERS)
         mainHandler.removeCallbacks(ringTick)
         // Say it once, then the beeps keep going until dismissed.
-        speak(Replies.TIMER_DONE) { if (ringing) mainHandler.post(ringTick) }
+        speak(Replies.timerDone(t.label)) { if (ringing) mainHandler.post(ringTick) }
     }
 
     private fun stopRinging() {
         ringing = false
+        ringLabels.clear()
         mainHandler.removeCallbacks(ringTick)
         renderTimer()
     }
 
-    /** Stops the alarm and/or cancels the countdown. True if there was anything to stop. */
-    private fun dismissTimer(): Boolean {
+    /** Voice "annulla il timer ...": returns the spoken answer. Stops the alarm first if it is ringing. */
+    private fun cancelTimers(intent: EchoIntent.TimerCancel): String {
         val wasRinging = ringing
         if (wasRinging) stopRinging()
-        return kitchenTimer.cancel() || wasRinging
+        val reply = when {
+            intent.all -> if (kitchenTimer.cancelAll() > 0 || wasRinging) Replies.TIMERS_CANCELLED else Replies.NO_TIMER
+            intent.label != null -> {
+                val found = kitchenTimer.find(intent.label)
+                found.forEach { kitchenTimer.cancel(it) }
+                if (found.isNotEmpty()) Replies.timerCancelled(intent.label) else Replies.timerNotFound(intent.label)
+            }
+            wasRinging -> Replies.TIMER_CANCELLED
+            else -> kitchenTimer.active().firstOrNull()?.let {
+                kitchenTimer.cancel(it)
+                Replies.timerCancelled(it.label)
+            } ?: Replies.NO_TIMER
+        }
+        renderTimer()
+        return reply
     }
 
-    /** Home shows a one-line chip; the Timers screen shows the countdown big. */
+    private fun cancelAllFromScreen() {
+        if (ringing) stopRinging()
+        kitchenTimer.cancelAll()
+        renderTimer()
+        showScreen(Screen.HOME)
+    }
+
+    private fun clockText(total: Int) =
+        if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60)
+        else "%d:%02d".format(total / 60, total % 60)
+
+    /** Home shows one line (the soonest timer, "+N" if more); the Timers screen lists them all. */
     private fun renderTimer() {
+        val active = kitchenTimer.active()
+        timerRows.forEachIndexed { i, (label, time) ->
+            val t = active.getOrNull(i)
+            val shown = t != null && !ringing
+            label.visibility = if (shown && t!!.label != null) View.VISIBLE else View.GONE
+            time.visibility = if (shown) View.VISIBLE else View.GONE
+            if (shown) {
+                label.text = t!!.label?.replaceFirstChar { it.uppercase() }
+                time.text = clockText(secondsLeft(t))
+                val n = active.size
+                time.textSize = when (n) { 1 -> 110f; 2 -> 64f; 3 -> 46f; else -> 38f }
+                label.textSize = if (n == 1) 24f else 18f
+            }
+        }
         when {
             ringing -> {
-                homeTimerView.text = "⏱ Timer scaduto"
-                timerView.text = "Scaduto!"
+                // Show who rang in the first row, big.
+                val (label, time) = timerRows[0]
+                label.visibility = View.GONE
+                time.visibility = View.VISIBLE
+                time.textSize = 72f
+                time.text = ringLabels.filterNotNull().distinct().joinToString(" · ").ifEmpty { "Timer" }.replaceFirstChar { it.uppercase() } + " scaduto!"
                 timerHintView.text = "Tocca per fermare"
                 timerCancelView.visibility = View.GONE
             }
-            kitchenTimer.isRunning -> {
-                val total = (kitchenTimer.remainingMs() + 999) / 1000
-                val shown = if (total >= 3600) "%d:%02d:%02d".format(total / 3600, total / 60 % 60, total % 60)
-                    else "%d:%02d".format(total / 60, total % 60)
-                homeTimerView.text = "⏱ $shown"
-                timerView.text = shown
-                timerHintView.text = "Timer"
+            active.isNotEmpty() -> {
+                timerHintView.text = ""
+                timerCancelView.text = if (active.size > 1) "Annulla tutti" else "Annulla timer"
                 timerCancelView.visibility = View.VISIBLE
             }
             else -> {
-                timerView.text = "Nessun timer"
-                timerHintView.text = "Di’: “timer 10 minuti”"
+                timerHintView.text = "Nessun timer · di’: “timer pasta 10 minuti”"
                 timerCancelView.visibility = View.GONE
             }
         }
-        homeTimerView.visibility = if (ringing || kitchenTimer.isRunning) View.VISIBLE else View.GONE
-        timerView.textSize = if (ringing || kitchenTimer.isRunning) 110f else 40f
+        homeTimerView.visibility = if (ringing || active.isNotEmpty()) View.VISIBLE else View.GONE
+        homeTimerView.text = when {
+            ringing -> "⏱ Timer scaduto"
+            active.isEmpty() -> ""
+            else -> {
+                val first = active.first()
+                "⏱ " + (first.label?.let { "$it " } ?: "") + clockText(secondsLeft(first)) +
+                    if (active.size > 1) " +${active.size - 1}" else ""
+            }
+        }
     }
 
     private fun togglePlayPause() {

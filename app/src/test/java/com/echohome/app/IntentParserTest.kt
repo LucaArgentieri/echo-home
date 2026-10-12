@@ -127,10 +127,10 @@ class IntentParserTest {
     }
 
     @Test fun timerCancel() {
-        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("annulla timer"))
-        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("annulla il timer"))
-        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("ferma il timer"))
-        assertEquals(EchoIntent.TimerCancel, IntentParser.parse("spegni la sveglia"))
+        assertEquals(EchoIntent.TimerCancel(), IntentParser.parse("annulla timer"))
+        assertEquals(EchoIntent.TimerCancel(), IntentParser.parse("annulla il timer"))
+        assertEquals(EchoIntent.TimerCancel(), IntentParser.parse("ferma il timer"))
+        assertEquals(EchoIntent.TimerCancel(), IntentParser.parse("spegni la sveglia"))
     }
 
     @Test fun timerNeverBecomesMusicSearchOrPause() {
@@ -160,8 +160,8 @@ class IntentParserTest {
     fun quickWins() {
         assertEquals(EchoIntent.Date, IntentParser.parse("che giorno è oggi"))
         assertEquals(EchoIntent.Date, IntentParser.parse("Che data è?"))
-        assertEquals(EchoIntent.TimerRemaining, IntentParser.parse("quanto manca al timer"))
-        assertEquals(EchoIntent.TimerRemaining, IntentParser.parse("quanto manca"))
+        assertEquals(EchoIntent.TimerRemaining(), IntentParser.parse("quanto manca al timer"))
+        assertEquals(EchoIntent.TimerRemaining(), IntentParser.parse("quanto manca"))
         assertEquals(EchoIntent.VolumeUnmute, IntentParser.parse("riattiva l'audio"))
         assertEquals(EchoIntent.VolumeUnmute, IntentParser.parse("riattiva audio"))
         assertEquals(EchoIntent.VolumeSet(0), IntentParser.parse("muto"))
@@ -182,5 +182,23 @@ class IntentParserTest {
         assertEquals(EchoIntent.MusicPause, IntentParser.parse("ok pausa grazie"))
         assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("vorrei un timer di 5 minuti"))
         assertNull(IntentParser.parse("mettere"))
+    }
+
+    @Test
+    fun namedTimers() {
+        assertEquals(EchoIntent.TimerCreate(600, "pasta"), IntentParser.parse("timer pasta 10 minuti"))
+        assertEquals(EchoIntent.TimerCreate(600, "pasta"), IntentParser.parse("imposta un timer per la pasta di 10 minuti"))
+        assertEquals(EchoIntent.TimerCreate(480, "uova"), IntentParser.parse("metti un timer di 8 minuti per le uova"))
+        assertEquals(EchoIntent.TimerCreate(5400, null), IntentParser.parse("timer un'ora e mezza"))
+        assertEquals(EchoIntent.TimerCancel("pasta"), IntentParser.parse("annulla il timer della pasta"))
+        assertEquals(EchoIntent.TimerCancel("pasta"), IntentParser.parse("annulla timer pasta"))
+        assertEquals(EchoIntent.TimerCancel("uova"), IntentParser.parse("annulla il timer delle uova"))
+        assertEquals(EchoIntent.TimerCancel(all = true), IntentParser.parse("annulla tutti i timer"))
+        assertEquals(EchoIntent.TimerRemaining("pasta"), IntentParser.parse("quanto manca al timer della pasta"))
+        assertEquals(EchoIntent.TimerRemaining(), IntentParser.parse("quanti timer ho"))
+        assertEquals(EchoIntent.MusicPause, IntentParser.parse("ferma la musica"))
+        assertEquals(true, IntentParser.labelMatches("pasta", "la pasta"))
+        assertEquals(false, IntentParser.labelMatches("pasta", "uova"))
+        assertEquals(false, IntentParser.labelMatches(null, "uova"))
     }
 }

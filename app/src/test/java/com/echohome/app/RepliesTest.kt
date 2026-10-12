@@ -36,4 +36,12 @@ class RepliesTest {
         assertEquals("Mancano 3 minuti e 20 secondi.", Replies.timerRemaining(200))
         assertEquals("Manca 1 minuto.", Replies.timerRemaining(60))
     }
+
+    @Test
+    fun namedTimerReplies() {
+        assertEquals("Timer pasta impostato per 10 minuti.", Replies.timerSet(600, "pasta"))
+        assertEquals("Il timer pasta è scaduto.", Replies.timerDone("pasta"))
+        assertEquals("Hai 2 timer: pasta tra 5 minuti e uova tra 8 minuti.", Replies.timersRemaining(listOf("pasta" to 300, "uova" to 480)))
+        assertEquals("Mancano 5 minuti.", Replies.timersRemaining(listOf(null to 300)))
+    }
 }

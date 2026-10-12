@@ -34,7 +34,21 @@ object Replies {
         else -> "Volume al $percent per cento."
     }
 
-    fun timerSet(seconds: Int) = "Timer impostato per ${describeDuration(seconds)}."
+    fun timerSet(seconds: Int, label: String? = null) =
+        "Timer ${if (label != null) "$label " else ""}impostato per ${describeDuration(seconds)}."
+    fun timerDone(label: String?) = if (label == null) TIMER_DONE else "Il timer $label è scaduto."
+    fun timerNotFound(label: String) = "Non ho un timer $label."
+    fun timerCancelled(label: String?) = if (label == null) TIMER_CANCELLED else "Timer $label annullato."
+
+    /** (label, seconds left) for every active timer. */
+    fun timersRemaining(items: List<Pair<String?, Int>>): String {
+        if (items.size == 1 && items[0].first == null) return timerRemaining(items[0].second)
+        val parts = items.map { (label, s) -> "${label ?: "un timer"} tra ${describeDuration(s)}" }
+        val list = if (parts.size == 1) parts[0] else parts.dropLast(1).joinToString(", ") + " e " + parts.last()
+        return if (items.size == 1) "$list." else "Hai ${items.size} timer: $list."
+    }
+    const val TOO_MANY_TIMERS = "Ci sono già troppi timer attivi."
+    const val TIMERS_CANCELLED = "Timer annullati."
     const val TIMER_CANCELLED = "Timer annullato."
     const val NEXT = "Brano successivo."
     const val PREVIOUS = "Brano precedente."

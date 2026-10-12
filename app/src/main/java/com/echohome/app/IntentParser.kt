@@ -15,11 +15,13 @@ sealed interface EchoIntent {
     data object Date : EchoIntent
     data class MusicShuffle(val enabled: Boolean) : EchoIntent
     data class MusicRepeat(val enabled: Boolean) : EchoIntent
-    data object TimerRemaining : EchoIntent
+    /** [label] null = all timers. */
+    data class TimerRemaining(val label: String? = null) : EchoIntent
     data object WeatherNow : EchoIntent
     data object WeatherTomorrow : EchoIntent
-    data class TimerCreate(val seconds: Int) : EchoIntent
-    data object TimerCancel : EchoIntent
+    data class TimerCreate(val seconds: Int, val label: String? = null) : EchoIntent
+    /** No label: the ringing/nearest timer; [all]: every timer. */
+    data class TimerCancel(val label: String? = null, val all: Boolean = false) : EchoIntent
 }
 
 /**
@@ -47,7 +49,12 @@ object IntentParser {
         RegexOption.IGNORE_CASE,
     )
     private val timerBare = rx("(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?timer")
-    private val timerCancel = rx("(?:annulla|cancella|elimina|ferma|spegni|stoppa|stop)(?: il| la)? (?:timer|sveglia)|timer (?:annulla|stop|basta)")
+    private val timerCancelAll = rx("(?:annulla|cancella|elimina|ferma|spegni|stoppa) tutti (?:i )?timer")
+    private val timerCancel = rx(
+        "(?:annulla|cancella|elimina|ferma|spegni|stoppa|stop)(?: il| la)? (?:timer|sveglia)" +
+            "(?: (?:di|del|della|dello|delle|dei|degli|dell'|per|per il|per la|per le|per i) ?(.+)| ([^ ]+))?|timer (?:annulla|stop|basta)",
+    )
+    private val timerList = rx("(?:quanti timer (?:ho|ci sono|sono attivi)|(?:che|quali) timer (?:ho|ci sono)(?: attivi)?|(?:mostra|elenca|fammi vedere)(?: i| tutti i)? timer|lista(?: dei)? timer)")
     private val weatherTomorrow = rx(
         "(?:che tempo (?:farà|fa|ci sarà|c'è) domani|(?:com'è|come sarà|dimmi)? ?(?:il )?(?:meteo|tempo) (?:di |per )?domani|" +
             "previsioni(?: del tempo)?(?: per| di)? domani|domani (?:che tempo fa|piove|pioverà))",
@@ -57,7 +64,10 @@ object IntentParser {
             "meteo(?: oggi| adesso)?|previsioni(?: del tempo)?|piove(?: adesso| ora)?)",
     )
     private val date = rx("(?:che|quale) (?:giorno|data) (?:è|e)(?: oggi)?|(?:dimmi )?(?:la )?data(?: di oggi)?|che giorno è oggi")
-    private val timerRemaining = rx("quanto (?:tempo )?(?:manca|resta|rimane)(?: al| del| per il)?(?: timer)?|a che punto è il timer")
+    private val timerRemaining = rx(
+        "(?:quanto (?:tempo )?(?:manca|resta|rimane)|a che punto è)(?: (?:al|allo|alla|del|della|per il|per la|il))?" +
+            "(?: timer)?(?: (?:di|del|della|dello|per|per il|per la))?(?: (.+))?",
+    )
     private val shuffleOn = rx("(?:attiva )?(?:la )?(?:riproduzione |modalità )?(?:casuale|shuffle)|mischia(?: i brani| la musica)?")
     private val shuffleOff = rx("(?:disattiva|togli|spegni) (?:la )?(?:riproduzione |modalità )?(?:casuale|shuffle)|non mischiare")
     private val repeatOn = rx("ripeti(?: questo| il)?(?: brano| canzone)?|(?:attiva )?(?:la )?ripetizione")
@@ -103,12 +113,17 @@ object IntentParser {
             .trim()
         if (cleaned.isEmpty()) return null
 
-        if (timerCancel.matches(cleaned)) return EchoIntent.TimerCancel
+        if (timerCancelAll.matches(cleaned)) return EchoIntent.TimerCancel(all = true)
+        timerCancel.matchEntire(cleaned)?.let { m ->
+            val label = (m.groupValues[1].ifEmpty { m.groupValues[2] }).let(::cleanLabel)
+            return EchoIntent.TimerCancel(label)
+        }
+        if (timerList.matches(cleaned)) return EchoIntent.TimerRemaining()
         // A timer request without a duration ("metti un timer") is incomplete, not a music search.
         if (timerBare.matches(cleaned)) return null
         // "timer ..." is always a timer request: never let it fall through to a music search.
         timerStart.matchEntire(cleaned)?.let { m ->
-            return parseDuration(m.groupValues[1])?.let { EchoIntent.TimerCreate(it) }
+            return parseDuration(m.groupValues[1])?.let { EchoIntent.TimerCreate(it, timerLabel(m.groupValues[1])) }
         }
         exact(cleaned)?.let { return it }
         return fuzzy(cleaned)
@@ -127,7 +142,8 @@ object IntentParser {
         weatherNow.matches(cleaned) -> EchoIntent.WeatherNow
         time.matches(cleaned) -> EchoIntent.Time
         date.matches(cleaned) -> EchoIntent.Date
-        timerRemaining.matches(cleaned) -> EchoIntent.TimerRemaining
+        timerRemaining.matchEntire(cleaned) != null ->
+            EchoIntent.TimerRemaining(cleanLabel(timerRemaining.matchEntire(cleaned)!!.groupValues[1]))
         shuffleOff.matches(cleaned) -> EchoIntent.MusicShuffle(false)
         shuffleOn.matches(cleaned) -> EchoIntent.MusicShuffle(true)
         repeatOff.matches(cleaned) -> EchoIntent.MusicRepeat(false)
@@ -202,6 +218,28 @@ object IntentParser {
             }
         }
         return null
+    }
+
+    private val durationChunk =
+        "(?:un quarto d'ora|mezz'ora|mezza ora|un'ora|\\S+ (?:ore|ora|minuti|minuto|secondi|secondo))"
+    private val durationPhrase = Regex("$durationChunk(?: e (?:mezza|mezzo|$durationChunk))*")
+    private val labelFiller = Regex("^(?:(?:di|da|per|del|della|dello|dei|delle|il|lo|la|l'|i|le|gli|un|una) ?)+|(?: (?:di|da|per))+$")
+
+    /** What is left of "pasta 10 minuti" / "10 minuti per la pasta" once the duration is removed. */
+    internal fun timerLabel(text: String): String? =
+        cleanLabel(durationPhrase.replace(" " + text.lowercase().replace('’', '\'') + " ", " "))
+
+    /** Lowercase, no leading articles/prepositions, max 24 chars; null when empty. */
+    internal fun cleanLabel(raw: String?): String? {
+        val t = raw.orEmpty().lowercase().trim().replace(Regex("\\s+"), " ")
+        return labelFiller.replace(t, "").trim().take(24).trim().ifEmpty { null }
+    }
+
+    /** True when a timer called [label] is the one the user means by [query] ("pasta" matches "pasta"). */
+    fun labelMatches(label: String?, query: String): Boolean {
+        val l = cleanLabel(label) ?: return false
+        val q = cleanLabel(query) ?: return false
+        return l == q || l.contains(q) || q.contains(l)
     }
 
     private val durationPart = Regex("(\\S+)\\s+(ore|ora|minuti|minuto|secondi|secondo)\\b")
