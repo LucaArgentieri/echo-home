@@ -71,6 +71,7 @@ Use single quotes *inside* the double quotes (adb splits arguments on spaces). E
 - Do not start the wake listener while TTS is playing or a session is running (`startWake()` already guards `voiceBusy`/`isListening`).
 - zsh does not word-split unquoted variables (`${=var}` when needed). The emulator is slow: avoid scripting keyboard typing; prefer `echo_cmd`.
 - The mic path of the emulator (Mac speaker → host mic → emulator) distorts audio: do not judge STT or wake-word accuracy from it. Offline checks on clean TTS audio (macOS `say` + the sherpa-onnx JVM jars) are reliable for models; real accuracy must be measured on the Echo.
+- GitHub issue #1 is the project todo: tick items when done and add new ideas there (`gh issue view 1 --json body -q .body`, edit a file, `gh issue edit 1 --body-file`).
 - Commit locally per milestone with a clear message; pushing to GitHub (`LucaArgentieri/echo-home`, branch `main`) only when the owner asks.
 
 ## Security notes for the final device
