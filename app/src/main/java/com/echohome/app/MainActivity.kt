@@ -59,6 +59,8 @@ class MainActivity : Activity() {
         private const val RING_INTERVAL_MS = 900L
         private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
+        private const val WEATHER_RETRY_MIN_MS = 15_000L
+        private const val WEATHER_RETRY_MAX_MS = 5 * 60 * 1000L
         private const val SCREEN_MS = 20_000L
         private const val DUCK_VOLUME = 0.25f
         private const val STATUS_MS = 6_000L
@@ -237,6 +239,7 @@ class MainActivity : Activity() {
         visible = false
         mainHandler.removeCallbacks(progressTicker)
         mainHandler.removeCallbacks(weatherRefresh)
+        mainHandler.removeCallbacks(weatherRetry)
         mainHandler.removeCallbacks(reconnectRunnable)
         mainHandler.removeCallbacks(searchTimeout)
         unduckMusic()
@@ -1040,14 +1043,28 @@ class MainActivity : Activity() {
         }
     }
 
+    // A failed refresh (network not ready right after boot/start) is retried soon, not in 30 minutes.
+    private var weatherRetryMs = WEATHER_RETRY_MIN_MS
+    private val weatherRetry = Runnable { refreshWeather() }
+
     /** Updates the header temperature (silent). Same Open-Meteo call as the voice answers. */
     private fun refreshWeather() {
+        mainHandler.removeCallbacks(weatherRetry)
         weatherExecutor.execute {
-            val f = try { WeatherClient.fetch() } catch (_: Exception) { null }
+            val f = try {
+                WeatherClient.fetch()
+            } catch (e: Exception) {
+                android.util.Log.i("EchoHome", "weather: refresh failed (${e.javaClass.simpleName})")
+                null
+            }
             mainHandler.post {
                 if (f != null) {
                     lastForecast = f
                     lastForecastAt = System.currentTimeMillis()
+                    weatherRetryMs = WEATHER_RETRY_MIN_MS
+                } else if (visible) {
+                    mainHandler.postDelayed(weatherRetry, weatherRetryMs)
+                    weatherRetryMs = minOf(weatherRetryMs * 2, WEATHER_RETRY_MAX_MS)
                 }
                 renderWeatherHeader()
                 if (f != null && screen == Screen.WEATHER) renderWeather(f, weatherTomorrow)
