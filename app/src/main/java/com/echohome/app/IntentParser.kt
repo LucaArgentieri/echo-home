@@ -43,7 +43,7 @@ object IntentParser {
     private val volumeUnmute = rx("(?:riattiva|ripristina|rimetti)(?: l'| il)? ?(?:audio|volume)|(?:togli|disattiva) (?:il )?(?:muto|silenzio)")
     private val volumeSet = rx("(?:(?:imposta|metti|porta|regola)(?: il)? )?volume (?:(?:al|a|su) )?(.+?)(?: ?%| per cento)?")
     private val timerStart = Regex(
-        "^(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?timer(?: di| per| da)?\\s+(.+)$",
+        "^(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?(?:(?:un|il) )?timer(?: di| per| da)?\\s+(.+)$",
         RegexOption.IGNORE_CASE,
     )
     private val timerBare = rx("(?:(?:imposta|metti|avvia|fai partire|crea|programma)(?: un| il)? )?timer")
@@ -67,8 +67,9 @@ object IntentParser {
     // "metti i Radiohead", "metti su Wish You Were Here", "fai partire le ...", "suona ..."
     // Only plural/partitive articles are dropped; "metti La Vie en Rose" keeps its "La".
     private val search = Regex(
-        "^(?:metti(?:mi)?(?: su)?|fai partire|riproduci|suona|ascolta|voglio ascoltare)\\s+" +
-            "(?:(?:la musica|le canzoni|la canzone|il brano|l'album|l'artista)\\s+(?:di|dei|degli|delle|del|della)\\s+|" +
+        "^(?:metti(?:mi)?(?: su)?|mettere|suonare|riprodurre|fai partire|fammi sentire|cerca|riproduci|suona|ascolta|voglio ascoltare)\\s+" +
+            "(?:(?:la musica|le canzoni|la canzone|il brano|il disco|l'album|la playlist|l'artista)\\s+(?:di|dei|degli|delle|del|della)\\s+|" +
+            "(?:il disco|l'album|la playlist|il brano|la canzone)\\s+|" +
             "(?:i|gli|le|dei|degli|delle|l')\\s*)?" +
             "(.+)$",
         RegexOption.IGNORE_CASE,
@@ -76,6 +77,10 @@ object IntentParser {
 
     // Verbs the speech recogniser tends to mangle ("meti", "metì", "suonna"): matched within 1 edit.
     private val searchVerbs = listOf("metti", "mettimi", "suona", "riproduci", "ascolta")
+
+    // Politeness the recogniser keeps: "per favore metti i Queen", "puoi mettere i Queen per piacere".
+    private val politePrefix = Regex("^(?:per (?:favore|piacere|cortesia),? |ehi,? |ok,? |puoi |potresti |vorrei |mi (?:puoi|potresti) )+", RegexOption.IGNORE_CASE)
+    private val politeSuffix = Regex(",? (?:per (?:favore|piacere|cortesia)|grazie)$", RegexOption.IGNORE_CASE)
 
     // Single-word commands, also matched within 1 edit ("prossimo", "riprendi" -> "riprendo").
     private val fuzzyCommands = listOf(
@@ -93,6 +98,9 @@ object IntentParser {
             .trim()
             .trimEnd('.', ',', '!', '?', ';', ':')
             .replace(Regex("\\s+"), " ")
+            .replace(politePrefix, "")
+            .replace(politeSuffix, "")
+            .trim()
         if (cleaned.isEmpty()) return null
 
         if (timerCancel.matches(cleaned)) return EchoIntent.TimerCancel

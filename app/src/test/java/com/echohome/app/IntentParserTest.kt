@@ -171,4 +171,16 @@ class IntentParserTest {
         assertEquals(EchoIntent.MusicRepeat(false), IntentParser.parse("non ripetere"))
         assertEquals(EchoIntent.MusicSearch("Radiohead"), IntentParser.parse("metti Radiohead"))
     }
+
+    @Test
+    fun politenessAndAlbumForms() {
+        assertEquals(EchoIntent.MusicSearch("Queen"), IntentParser.parse("per favore metti i Queen"))
+        assertEquals(EchoIntent.MusicSearch("Queen"), IntentParser.parse("puoi mettere i Queen per piacere"))
+        assertEquals(EchoIntent.MusicSearch("Pink Floyd"), IntentParser.parse("metti il disco dei Pink Floyd"))
+        assertEquals(EchoIntent.MusicSearch("Rock Classics"), IntentParser.parse("metti la playlist Rock Classics"))
+        assertEquals(EchoIntent.MusicSearch("Thriller"), IntentParser.parse("fammi sentire l'album Thriller"))
+        assertEquals(EchoIntent.MusicPause, IntentParser.parse("ok pausa grazie"))
+        assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("vorrei un timer di 5 minuti"))
+        assertNull(IntentParser.parse("mettere"))
+    }
 }
