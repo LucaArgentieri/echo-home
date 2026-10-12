@@ -64,6 +64,10 @@ class MainActivity : Activity() {
         private const val SCREEN_MS = 20_000L
         private const val DUCK_VOLUME = 0.25f
         private const val NIGHT_BRIGHTNESS = 0.1f // 0..1 of the panel, only for this window
+        private const val IDLE_BRIGHTNESS = 0.3f // daytime, after DIM_AFTER_MS without activity
+        private const val DIM_AFTER_MS = 3 * 60 * 1000L
+        private const val STT_IDLE_RELEASE_MS = 2 * 60 * 1000L // free Whisper's RAM when unused
+        private const val COVER_MAX_PX = 400 // the cover view is 170dp
         private const val STATUS_MS = 6_000L
         private const val MUSIC_SCREEN_MS = 30_000L
         private const val RING_MAX_BEEPS = 25
@@ -138,6 +142,14 @@ class MainActivity : Activity() {
     private var voiceBusy = false           // a wake/command session is running
     private var sessionWasPlaying = false   // music was paused for the session and may need resuming
     private val sttExecutor = Executors.newSingleThreadExecutor()
+
+    // Whisper holds ~100+ MB; drop it after a quiet spell and reload on the next command.
+    private val releaseStt = Runnable { sttExecutor.execute { stt?.release(); stt = null } }
+
+    private fun scheduleSttRelease() {
+        mainHandler.removeCallbacks(releaseStt)
+        mainHandler.postDelayed(releaseStt, STT_IDLE_RELEASE_MS)
+    }
     private var stt: SpeechToText? = null
 
     private val reconnectRunnable = Runnable { connectToMeld() }
@@ -208,6 +220,7 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // smart display: stays on while in front
         setContentView(buildUi())
         renderClock()
+        noteActivity()
         renderAssistant()
         renderDisconnected("Meld · non connesso")
         handleDebugCommand(intent)
@@ -526,6 +539,7 @@ class MainActivity : Activity() {
     /** One feature on screen at a time; anything but Home falls back to Home after a quiet spell. */
     private fun showScreen(target: Screen) {
         screen = target
+        noteActivity()
         if (target == Screen.WEATHER) showStatus() else mainHandler.postDelayed(hideStatus, STATUS_MS)
         screens.forEach { (s, v) -> v.visibility = if (s == target) View.VISIBLE else View.GONE }
         renderTimer()
@@ -551,7 +565,10 @@ class MainActivity : Activity() {
 
     /** Any touch counts as activity: keeps the current screen up a little longer. */
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        if (ev.action == android.view.MotionEvent.ACTION_DOWN) scheduleGoHome()
+        if (ev.action == android.view.MotionEvent.ACTION_DOWN) {
+            scheduleGoHome()
+            noteActivity()
+        }
         return super.dispatchTouchEvent(ev)
     }
 
@@ -564,6 +581,35 @@ class MainActivity : Activity() {
     private lateinit var dashboard: View
 
     private var nightMode = false
+    private var idleDim = false
+
+    private val dimNow = Runnable {
+        if (screen == Screen.HOME && !ringing && assistantState == AssistantState.IDLE) {
+            idleDim = true
+            applyBrightness()
+        } else {
+            noteActivity()
+        }
+    }
+
+    /** Touch, command or voice: undim and restart the countdown to the daytime dimmer. */
+    private fun noteActivity() {
+        mainHandler.removeCallbacks(dimNow)
+        mainHandler.postDelayed(dimNow, DIM_AFTER_MS)
+        if (idleDim) {
+            idleDim = false
+            applyBrightness()
+        }
+    }
+
+    private fun applyBrightness() {
+        val level = when {
+            nightMode -> NIGHT_BRIGHTNESS
+            idleDim -> IDLE_BRIGHTNESS
+            else -> WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        }
+        window.attributes = window.attributes.apply { screenBrightness = level }
+    }
 
     private fun renderClock() {
         val now = java.util.Date()
@@ -573,9 +619,7 @@ class MainActivity : Activity() {
         dashboard.alpha = if (night) 0.35f else 1f
         if (night != nightMode) { // the panel itself gets dimmer too, not only the colours
             nightMode = night
-            window.attributes = window.attributes.apply {
-                screenBrightness = if (night) NIGHT_BRIGHTNESS else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-            }
+            applyBrightness()
         }
         dashboard.translationX = (hour % 4 - 2) * resources.displayMetrics.density * 2
         dashboard.translationY = (hour % 3 - 1) * resources.displayMetrics.density * 2
@@ -597,6 +641,7 @@ class MainActivity : Activity() {
 
     private fun setAssistant(state: AssistantState) {
         assistantState = state
+        noteActivity()
         renderAssistant()
     }
 
@@ -872,6 +917,7 @@ class MainActivity : Activity() {
             val started = System.nanoTime()
             val text = try {
                 val engine = stt ?: SpeechToText(assets).also { stt = it }
+                scheduleSttRelease()
                 engine.transcribe(samples)
             } catch (t: Throwable) {
                 mainHandler.post {
@@ -1365,12 +1411,11 @@ class MainActivity : Activity() {
 
         artworkExecutor.execute {
             val bitmap: Bitmap? = try {
-                when {
-                    data != null -> BitmapFactory.decodeByteArray(data, 0, data.size)
-                    uri!!.scheme == "http" || uri.scheme == "https" ->
-                        URL(uri.toString()).openStream().use { BitmapFactory.decodeStream(it) }
-                    else -> contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+                val bytes = data ?: when {
+                    uri!!.scheme == "http" || uri.scheme == "https" -> URL(uri.toString()).openStream().use { it.readBytes() }
+                    else -> contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 }
+                bytes?.let { decodeCover(it) }
             } catch (_: Exception) {
                 null
             }
@@ -1378,5 +1423,14 @@ class MainActivity : Activity() {
                 if (request == artworkRequest) coverView.setImageBitmap(bitmap)
             }
         }
+    }
+
+    /** Decodes at about [COVER_MAX_PX]: a 1000 px cover would cost 4 MB for a 170dp view. */
+    private fun decodeCover(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= COVER_MAX_PX && bounds.outHeight / (sample * 2) >= COVER_MAX_PX) sample *= 2
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
     }
 }
