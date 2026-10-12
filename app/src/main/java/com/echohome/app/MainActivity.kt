@@ -63,6 +63,7 @@ class MainActivity : Activity() {
         private const val WEATHER_RETRY_MAX_MS = 5 * 60 * 1000L
         private const val SCREEN_MS = 20_000L
         private const val DUCK_VOLUME = 0.25f
+        private const val NIGHT_BRIGHTNESS = 0.1f // 0..1 of the panel, only for this window
         private const val STATUS_MS = 6_000L
         private const val MUSIC_SCREEN_MS = 30_000L
         private const val RING_MAX_BEEPS = 25
@@ -145,13 +146,26 @@ class MainActivity : Activity() {
         statusView.text = "Meld non ha risposto alla ricerca (nessun risultato?)"
     }
 
+    // Ticks every second only while something counts seconds (a timer, the Timers screen, the player
+    // progress); otherwise once a minute for the clock. Fewer wake-ups = less CPU and heat.
     private val progressTicker = object : Runnable {
         override fun run() {
-            renderProgress()
-            renderTimer()
+            val playingOnMusic = screen == Screen.MUSIC && controller?.isPlaying == true
+            val secondsMatter = playingOnMusic || screen == Screen.TIMERS || kitchenTimer.isRunning || ringing
+            if (screen == Screen.MUSIC) renderProgress()
+            if (secondsMatter) renderTimer()
             renderClock()
-            if (visible) mainHandler.postDelayed(this, PROGRESS_INTERVAL_MS)
+            if (visible) {
+                val delay = if (secondsMatter) PROGRESS_INTERVAL_MS else 60_000L - System.currentTimeMillis() % 60_000L + 50L
+                mainHandler.postDelayed(this, delay)
+            }
         }
+    }
+
+    /** Re-evaluates the tick rate right away (after a screen change, a new timer, play/pause). */
+    private fun kickTicker() {
+        mainHandler.removeCallbacks(progressTicker)
+        if (visible) mainHandler.post(progressTicker)
     }
 
     private val controllerListener = object : MediaBrowser.Listener {
@@ -169,6 +183,7 @@ class MainActivity : Activity() {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            kickTicker()
             if (isPlaying) mainHandler.removeCallbacks(searchTimeout)
             renderState()
         }
@@ -516,6 +531,7 @@ class MainActivity : Activity() {
         renderTimer()
         renderProgress()
         scheduleGoHome()
+        kickTicker()
     }
 
     private val hideStatus = Runnable { if (screen != Screen.WEATHER) statusView.visibility = View.INVISIBLE }
@@ -547,11 +563,20 @@ class MainActivity : Activity() {
 
     private lateinit var dashboard: View
 
+    private var nightMode = false
+
     private fun renderClock() {
         val now = java.util.Date()
         // Night: dim everything and nudge the layout a few px each hour, against burn-in. No animation.
         val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-        dashboard.alpha = if (hour >= 23 || hour < 6) 0.35f else 1f
+        val night = hour >= 23 || hour < 6
+        dashboard.alpha = if (night) 0.35f else 1f
+        if (night != nightMode) { // the panel itself gets dimmer too, not only the colours
+            nightMode = night
+            window.attributes = window.attributes.apply {
+                screenBrightness = if (night) NIGHT_BRIGHTNESS else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+        }
         dashboard.translationX = (hour % 4 - 2) * resources.displayMetrics.density * 2
         dashboard.translationY = (hour % 3 - 1) * resources.displayMetrics.density * 2
         clockView.text = timeFormat.format(now)
@@ -692,6 +717,7 @@ class MainActivity : Activity() {
                     reply(Replies.TOO_MANY_TIMERS)
                 } else {
                     renderTimer()
+                    kickTicker()
                     reply(Replies.timerSet(intent.seconds, intent.label))
                 }
             }
