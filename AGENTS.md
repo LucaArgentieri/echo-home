@@ -33,9 +33,10 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 | File | Role |
 |---|---|
 | `MainActivity.kt` | The only Activity (`singleTask`, landscape, immersive). Builds the UI in code (`buildUi()`): four full-screen panels (HOME hub, WEATHER, TIMERS, MUSIC), one visible at a time via `showScreen()`; commands pick their screen in `routeScreen()`, anything but HOME returns to HOME after 20 s (30 s for music) without touches. Connects to Meld, orchestrates the voice session, executes intents. ~1000 lines: grows by section (`// ----` headers). |
-| `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music (incl. shuffle/repeat), volume (incl. unmute), time, date, timer (named, several at once, remaining/cancel by name), weather (now, tomorrow, next days). Returns `null` for unknown text. |
+| `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music (incl. shuffle/repeat), volume (incl. unmute, "un po' più forte" nudges), time, date, timer (named, several at once, remaining/cancel by name), weather (now, tomorrow, next days, other cities via `WeatherIn`). Strips a leaked wake word from the transcript and repairs garbled verbs (1 edit). Returns `null` for unknown text. |
 | `Replies.kt` | Pure Kotlin. Italian wording for answers; `describeDuration`, `rainSummary`, `rainTable`, WMO weather-code text. |
-| `Weather.kt` | `WeatherClient` (Open-Meteo, **fixed to San Giuliano Milanese**, no key) + `WeatherParser` (org.json). |
+| `Weather.kt` | `WeatherClient` (Open-Meteo, **home = San Giuliano Milanese**, no key; `fetch(lat, lon)` for other cities) + `Cities` (fixed offline table of ~40 Italian cities, no geocoding: the spoken text never goes online) + `WeatherParser` (org.json). |
+| `VolumeMath.kt` | Pure. Exact volume % = system step (15 on the Echo, rounded up) + Meld player volume as trim. |
 | `KitchenTimer.kt` | Up to 4 named countdowns; deadlines stored as wall-clock in SharedPreferences (one line per timer), re-armed on start. |
 | `WakeWordListener.kt` | `AudioRecord` → sherpa-onnx `KeywordSpotter`; mic released when it fires or on `stop()`. Keywords in `assets/kws/keywords.txt` (BPE tokens, one per line). |
 | `MicRecorder.kt` | Records one utterance with Silero VAD (end after 0.7 s silence, max 8 s, 5 s no-speech timeout), adds 0.5 s pre-roll / 0.3 s post-roll, returns speech only. |
@@ -70,7 +71,7 @@ Use single quotes *inside* the double quotes (adb splits arguments on spaces). E
 - Match the surrounding style; keep comments short and about *why*. No new abstractions without need.
 - `when` over `EchoIntent` must stay exhaustive: adding an intent means updating `runCommand` and `finishSession` in `MainActivity`, plus tests.
 - Anything that opens the microphone must go through `WakeWordListener`/`MicRecorder`; keep buffers in RAM and zero them. Never add audio logging.
-- Do not start the wake listener while TTS is playing or a session is running (`startWake()` already guards `voiceBusy`/`isListening`).
+- Do not start the wake listener while TTS is playing or a session is running (`startWake()` already guards `voiceBusy`/`isListening`). The one exception is the experimental barge-in (`bargeInEnabled`, pref `barge_in`, default off): during speech `startBargeInListener()` runs the detector on `VOICE_COMMUNICATION` with AEC; a hit sets `bargeInPending`, stops the TTS and `resumeListening()` starts the next command. Untested on real hardware.
 - zsh does not word-split unquoted variables (`${=var}` when needed). The emulator is slow: avoid scripting keyboard typing; prefer `echo_cmd`.
 - The mic path of the emulator (Mac speaker → host mic → emulator) distorts audio: do not judge STT or wake-word accuracy from it. Offline checks on clean TTS audio (macOS `say` + the sherpa-onnx JVM jars) are reliable for models; real accuracy must be measured on the Echo.
 - GitHub issue #1 is the project todo: tick items when done and add new ideas there (`gh issue view 1 --json body -q .body`, edit a file, `gh issue edit 1 --body-file`).
