@@ -230,4 +230,18 @@ class IntentParserTest {
         assertEquals(EchoIntent.VolumeNudge(false), IntentParser.parse("un po' più piano"))
         assertEquals(EchoIntent.VolumeUp, IntentParser.parse("più forte"))
     }
+
+    @Test fun wakeWordLeakingIntoTranscript() {
+        assertEquals(EchoIntent.Time, IntentParser.parse("Hey Jarvis, che ore sono?"))
+        assertEquals(EchoIntent.MusicSearch("Queen"), IntentParser.parse("Alexa, metti i Queen"))
+        assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("Ehi Echo timer 5 minuti"))
+        assertEquals(EchoIntent.MusicPause, IntentParser.parse("Jarvis pausa"))
+    }
+
+    @Test fun garbledVerbsAreRepaired() {
+        assertEquals(EchoIntent.VolumeDown, IntentParser.parse("abbasa il volume"))
+        assertEquals(EchoIntent.TimerCancel("pasta"), IntentParser.parse("anulla il timer della pasta"))
+        assertEquals(EchoIntent.TimerCreate(600), IntentParser.parse("imposta un taimer di 10 minuti"))
+        assertEquals(null, IntentParser.parse("lasciatemi cantare")) // not a command, no false repair
+    }
 }

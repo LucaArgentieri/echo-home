@@ -112,6 +112,8 @@ object IntentParser {
 
     // Politeness the recogniser keeps: "per favore metti i Queen", "puoi mettere i Queen per piacere".
     private val politePrefix = Regex("^(?:per (?:favore|piacere|cortesia),? |ehi,? |ok,? |puoi |potresti |vorrei |mi (?:puoi|potresti) )+", RegexOption.IGNORE_CASE)
+    // The wake word itself can leak into the transcript (pre-roll): "Hey Jarvis, che ore sono", "Alexa metti i Queen".
+    private val wakeWordPrefix = Regex("^(?:(?:hey|ehi|ei|ok|okay),? )?(?:jarvis|giarvis|echo|eco|alexa|alessa),? ", RegexOption.IGNORE_CASE)
     private val politeSuffix = Regex(",? (?:per (?:favore|piacere|cortesia)|grazie)$", RegexOption.IGNORE_CASE)
 
     // Single-word commands, also matched within 1 edit ("prossimo", "riprendi" -> "riprendo").
@@ -125,15 +127,35 @@ object IntentParser {
         "precedente" to EchoIntent.MusicPrevious,
     )
 
+    // Verbs the recogniser tends to garble, repaired when the first word is within 1 edit (5+ letters only).
+    private val commandVerbs = listOf(
+        "abbassa", "aumenta", "diminuisci", "annulla", "cancella", "imposta", "riprendi", "mostra",
+        "ripristina", "riattiva", "disattiva", "elimina",
+    )
+
     fun parse(text: String): EchoIntent? {
         val cleaned = text
             .trim()
             .trimEnd('.', ',', '!', '?', ';', ':')
             .replace(Regex("\\s+"), " ")
+            .replace(wakeWordPrefix, "")
             .replace(politePrefix, "")
             .replace(politeSuffix, "")
+            .replace(Regex("\\b(?:taimer|taimero|tàimer)\\b", RegexOption.IGNORE_CASE), "timer") // the TTS spelling, if it comes back
             .trim()
         if (cleaned.isEmpty()) return null
+        return core(cleaned) ?: repairVerb(cleaned)?.let(::core)
+    }
+
+    /** "abbasa il volume" -> "abbassa il volume"; null when the first word is not a near miss. */
+    private fun repairVerb(cleaned: String): String? {
+        val first = cleaned.substringBefore(' ')
+        if (first.length < 5) return null
+        val fixed = commandVerbs.firstOrNull { it != first.lowercase() && editDistance(first.lowercase(), it) == 1 } ?: return null
+        return fixed + cleaned.substring(first.length)
+    }
+
+    private fun core(cleaned: String): EchoIntent? {
 
         if (timerCancelAll.matches(cleaned)) return EchoIntent.TimerCancel(all = true)
         timerCancel.matchEntire(cleaned)?.let { m ->
