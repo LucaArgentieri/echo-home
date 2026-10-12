@@ -55,6 +55,7 @@ class MainActivity : Activity() {
         private const val WEATHER_CACHE_MS = 10 * 60 * 1000L
         private const val WEATHER_REFRESH_MS = 30 * 60 * 1000L
         private const val SCREEN_MS = 20_000L
+        private const val DUCK_VOLUME = 0.25f
         private const val STATUS_MS = 6_000L
         private const val MUSIC_SCREEN_MS = 30_000L
         private const val RING_MAX_BEEPS = 25
@@ -232,6 +233,7 @@ class MainActivity : Activity() {
         mainHandler.removeCallbacks(weatherRefresh)
         mainHandler.removeCallbacks(reconnectRunnable)
         mainHandler.removeCallbacks(searchTimeout)
+        unduckMusic()
         wakeListener.stop() // mic is released whenever the screen is not in front
         releaseController()
         super.onStop()
@@ -913,13 +915,40 @@ class MainActivity : Activity() {
         speak(text)
     }
 
+    // While the assistant talks the music plays quietly instead of staying paused (the wake word
+    // listener is off then, so there is no echo problem). Needs COMMAND_SET_VOLUME from Meld.
+    private var volumeBeforeDuck: Float? = null
+
+    private fun duckMusic() {
+        val c = controller ?: return
+        if (volumeBeforeDuck != null) return
+        if (!c.isCommandAvailable(Player.COMMAND_SET_VOLUME)) {
+            android.util.Log.i("EchoHome", "duck: Meld does not allow volume changes")
+            return
+        }
+        if (!(c.isPlaying || c.playWhenReady) && !sessionWasPlaying) return
+        volumeBeforeDuck = c.volume
+        c.volume = DUCK_VOLUME
+        android.util.Log.i("EchoHome", "duck: music volume ${volumeBeforeDuck} -> $DUCK_VOLUME")
+        if (sessionWasPlaying && !c.isPlaying) c.play() // the session paused it to record the command
+    }
+
+    private fun unduckMusic() {
+        val before = volumeBeforeDuck ?: return
+        volumeBeforeDuck = null
+        controller?.volume = before
+        android.util.Log.i("EchoHome", "duck: music volume back to $before, playing=${controller?.isPlaying}")
+    }
+
     private fun speak(text: String, then: () -> Unit = {}) {
+        if (speakingCount == 0) duckMusic()
         speakingCount++
         wakeListener.stop() // never let the wake word detector hear our own voice
         tts.speak(text) {
             speakingCount--
             then()
             if (speakingCount == 0) {
+                unduckMusic()
                 afterSpeech?.let { afterSpeech = null; it() }
                 startWake() // no-op while a voice session is still running
             }
