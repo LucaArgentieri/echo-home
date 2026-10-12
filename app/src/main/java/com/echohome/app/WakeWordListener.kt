@@ -18,7 +18,8 @@ import com.k2fsa.sherpa.onnx.OnlineTransducerModelConfig
  * overwritten by the next chunk. Nothing is stored, logged or sent. The mic is released as
  * soon as the wake word fires or [stop] is called, so the command recorder can take it over.
  *
- * Keywords live in assets/kws/keywords.txt (BPE tokens, one per line): "Hey Jarvis" and "Hey Echo".
+ * Keywords live in assets/kws/keywords.txt (BPE tokens, one per line): "Hey Jarvis", "Hey Echo" and "Alexa"
+ * (the last with its own boost/threshold on the line: ":3.0 #0.05").
  * A bare "Echo" is not detectable with this small model (0/10 in tests); "Hey Echo" is.
  */
 class WakeWordListener(private val assets: AssetManager) {

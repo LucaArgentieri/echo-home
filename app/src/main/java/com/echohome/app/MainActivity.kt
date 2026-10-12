@@ -772,7 +772,7 @@ class MainActivity : Activity() {
         wakeEnabled = !wakeEnabled
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_WAKE, wakeEnabled).apply()
         renderAssistant()
-        statusView.text = if (wakeEnabled) "Wake word attiva: «Hey Jarvis», «Hey Echo»" else "Wake word disattivata"
+        statusView.text = if (wakeEnabled) "Wake word attiva: «Hey Jarvis», «Hey Echo», «Alexa»" else "Wake word disattivata"
         if (wakeEnabled) {
             if (hasMicPermission()) startWake() else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
         } else {
