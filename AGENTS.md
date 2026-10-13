@@ -14,7 +14,7 @@ Language: user-facing strings and voice replies are **Italian**; code, comments 
 ## Hard requirements (from the owner)
 - **Deterministic intents only** (regex/grammar). No LLM, no generalist assistant.
 - **Privacy**: idle microphone = wake-word detector only (no STT). Audio lives only in RAM buffers that are reused or zeroed; never written to disk, logged or uploaded. Logs may contain events/labels/timings, never audio or recognised text.
-- Local models for wake word, VAD, STT, TTS. Weather is the only network call (plus Meld's cover art).
+- Local models for wake word, VAD, STT, TTS. Weather is the only network call (plus Meld's cover art and a weekly GET to the GitHub latest-release API, shown as a "Nuovo aggiornamento" label; no push, no auto-update).
 - Keep it light for a weak SoC (MediaTek): no heavy frameworks, no heavy animations, Android Views (no Compose), no Google services, minSdk 26, targetSdk 30.
 - Work in small verifiable milestones; each must produce an installable debug APK. Prefer simple, readable code over abstraction.
 - Do not describe the LineageOS build for `cronos` as "hardened".
@@ -36,6 +36,7 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 | `IntentParser.kt` | Pure Kotlin. `EchoIntent` sealed interface + `IntentParser.parse(text)`: regex first, then 1-edit-distance fuzzy matching for verbs/short commands. Handles music (incl. shuffle/repeat), volume (incl. unmute, "un po' più forte" nudges), time, date, timer (named, several at once, remaining/cancel by name), weather (now, tomorrow, next days, other cities via `WeatherIn`). Strips a leaked wake word from the transcript and repairs garbled verbs (1 edit). Returns `null` for unknown text. |
 | `Replies.kt` | Pure Kotlin. Italian wording for answers; `describeDuration`, `rainSummary`, `rainTable`, WMO weather-code text. |
 | `Weather.kt` | `WeatherClient` (Open-Meteo, **home = San Giuliano Milanese**, no key; `fetch(lat, lon)` for other cities) + `Cities` (fixed offline table of ~40 Italian cities, no geocoding: the spoken text never goes online) + `WeatherParser` (org.json). |
+| `ReleaseChecker.kt` | `Versions` (pure: "v0.3.0" vs installed, unknown formats are never newer) + `ReleaseClient` (GitHub latest release tag, one GET). Called at most weekly from `MainActivity.checkReleaseIfDue()`. |
 | `VolumeMath.kt` | Pure. Exact volume % = system step (15 on the Echo, rounded up) + Meld player volume as trim. |
 | `KitchenTimer.kt` | Up to 4 named countdowns; deadlines stored as wall-clock in SharedPreferences (one line per timer), re-armed on start. |
 | `WakeWordListener.kt` | `AudioRecord` → sherpa-onnx `KeywordSpotter`; mic released when it fires or on `stop()`. Keywords in `assets/kws/keywords.txt` (BPE tokens, one per line). |
@@ -78,4 +79,4 @@ Use single quotes *inside* the double quotes (adb splits arguments on spaces). E
 - Commit locally per milestone with a clear message; pushing to GitHub (`LucaArgentieri/echo-home`, branch `main`) only when the owner asks.
 
 ## Security notes for the final device
-Disable ADB after development, no root for daily use, only Echo Home + Meld installed, no public web server, no cloud microphone, no persistent audio, restrict network to what is needed (api.open-meteo.com and Meld's own traffic), manual updates only.
+Disable ADB after development, no root for daily use, only Echo Home + Meld installed, no public web server, no cloud microphone, no persistent audio, restrict network to what is needed (api.open-meteo.com, api.github.com for the weekly release check, and Meld's own traffic), manual updates only.

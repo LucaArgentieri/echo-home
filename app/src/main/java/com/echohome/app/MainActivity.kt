@@ -75,6 +75,9 @@ class MainActivity : Activity() {
         private const val PREFS = "echohome"
         private const val PREF_WAKE = "wake_enabled"
         private const val PREF_BARGE_IN = "barge_in"
+        private const val PREF_RELEASE_CHECKED = "release_checked_at"
+        private const val PREF_RELEASE_LATEST = "release_latest"
+        private const val RELEASE_CHECK_MS = 7 * 24 * 60 * 60 * 1000L // one GitHub call a week at most
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -113,6 +116,7 @@ class MainActivity : Activity() {
     private lateinit var clockView: TextView
     private lateinit var dayView: TextView
     private lateinit var weatherTopView: TextView // current weather on Home
+    private lateinit var releaseView: TextView // "Nuovo aggiornamento" when GitHub has a newer release
     private lateinit var assistantView: TextView
     private lateinit var debugPanel: LinearLayout
 
@@ -227,6 +231,8 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // smart display: stays on while in front
         setContentView(buildUi())
         renderClock()
+        renderRelease()
+        checkReleaseIfDue()
         noteActivity()
         renderAssistant()
         renderDisconnected("Meld · non connesso")
@@ -347,6 +353,10 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER
             setOnClickListener { openWeatherScreen() }
         }
+        releaseView = text(20f, amber).apply {
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
         homeTimerView = text(26f, amber).apply {
             gravity = Gravity.CENTER
             visibility = View.GONE
@@ -402,13 +412,14 @@ class MainActivity : Activity() {
             addView(openMeldButton)
         }
         val homePanel = panel(
-            dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel,
+            dayView, clockView, weatherTopView, releaseView, homeTimerView, homeMusicView, debugPanel,
         ).apply {
             gravity = Gravity.CENTER
-            listOf(dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel).forEach {
+            listOf(dayView, clockView, weatherTopView, releaseView, homeTimerView, homeMusicView, debugPanel).forEach {
                 it.layoutParams = LinearLayout.LayoutParams(match, wrap)
             }
             (weatherTopView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
+            (releaseView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
             (homeTimerView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
             (homeMusicView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
             (debugPanel.layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
@@ -1133,6 +1144,32 @@ class MainActivity : Activity() {
         if (speakingCount == 0) block() else afterSpeech = block
     }
 
+    // ---- Release notice: at most one GitHub call a week; the label stays until the app is updated.
+    private fun checkReleaseIfDue() {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val now = System.currentTimeMillis()
+        if (now - prefs.getLong(PREF_RELEASE_CHECKED, 0L) < RELEASE_CHECK_MS) return
+        weatherExecutor.execute {
+            try {
+                val tag = ReleaseClient.fetchLatestTag()
+                prefs.edit().putLong(PREF_RELEASE_CHECKED, now).putString(PREF_RELEASE_LATEST, tag).apply()
+                mainHandler.post { renderRelease() }
+            } catch (e: Exception) {
+                // Not stored: the next weekly-or-30-minute tick tries again.
+                android.util.Log.i("EchoHome", "release: check failed (${e.javaClass.simpleName})")
+            }
+        }
+    }
+
+    /** Shows the label from the last stored tag, so it survives offline starts and reboots. */
+    private fun renderRelease() {
+        val latest = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_RELEASE_LATEST, null)
+        val installed = packageManager.getPackageInfo(packageName, 0).versionName ?: return
+        val newer = latest != null && Versions.isNewer(latest, installed)
+        if (newer) releaseView.text = "Nuovo aggiornamento: $latest"
+        releaseView.visibility = if (newer) View.VISIBLE else View.GONE
+    }
+
     // ---- Weather (San Giuliano Milanese, Open-Meteo) --------------------------
 
     private val weatherExecutor = Executors.newSingleThreadExecutor()
@@ -1187,7 +1224,10 @@ class MainActivity : Activity() {
 
     private val weatherRefresh = object : Runnable {
         override fun run() {
-            if (!(nightMode && idleDim)) refreshWeather() // no network while the dark screen idles
+            if (!(nightMode && idleDim)) { // no network while the dark screen idles
+                refreshWeather()
+                checkReleaseIfDue()
+            }
             if (visible) mainHandler.postDelayed(this, WEATHER_REFRESH_MS)
         }
     }
