@@ -42,7 +42,7 @@ Emulatore con microfono del Mac: avvialo con `-allow-host-audio`. Per simulare l
 Test rapido senza voce né tastiera (solo build debug): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.
 
 ### Verifica con Meld (V0.1)
-Scrivi `Radiohead` nel pannello sviluppatore e premi `Cerca e riproduci`; poi prova pausa/riprendi, next, previous, cover e titolo/artista. Chiudendo Meld a forza Echo Home deve tornare a «non connesso» e riconnettersi. `INTERNET` serve solo per cover e meteo.
+Scrivi `Radiohead` nel pannello sviluppatore e premi `Cerca e riproduci`; poi prova pausa/riprendi, next, previous, cover e titolo/artista. Chiudendo Meld a forza Echo Home deve tornare a «non connesso» e riconnettersi. `INTERNET` serve solo per cover, meteo e controllo release.
 
 ## Integrazione Meld usata
 
@@ -98,6 +98,7 @@ Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Hey Jarvis»/«H
 - **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.
 - **Timer**: fino a 4 insieme, anche con un nome («timer pasta 10 minuti»). Le scadenze sono salvate, quindi suonano anche se l'app era chiusa. Alla scadenza dice «Il timer pasta è scaduto» e poi suona fino a quando non lo fermi (tocco o «annulla timer»).
 - **Meteo** (Open-Meteo, senza chiave): fisso su San Giuliano Milanese; a voce si può chiedere anche un'altra città tra una quarantina di città italiane (`che tempo fa a Roma`, coordinate nel codice: nessuna ricerca online, il testo parlato non lascia il dispositivo). Icone a emoji accanto alle condizioni (luna di notte). `che tempo fa` → temperatura e condizioni adesso, massima/minima di oggi. `che tempo farà domani` → minima, massima, condizioni e probabilità di pioggia **per ognuna delle 24 ore** (tabella a schermo; a voce un riassunto con le fasce a rischio, dal 40%). Unica chiamata di rete dell'app (`api.open-meteo.com`), con le sole coordinate della città; risultato in cache per 10 minuti e, se la rete manca, si usa l'ultimo dato.
+- **Aggiornamenti**: una volta a settimana l'app chiede a GitHub (`api.github.com`, sola GET, nessun dato del dispositivo) l'ultima release pubblicata. Se è più recente della versione installata, la Home mostra «Nuovo aggiornamento: v…» finché non installi la versione nuova. Nessuna notifica push e nessun aggiornamento automatico.
 - **Test veloce da terminale** (solo build debug): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.
 
 ### UI smart display
