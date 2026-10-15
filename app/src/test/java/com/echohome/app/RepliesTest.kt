@@ -60,4 +60,13 @@ class RepliesTest {
         assertEquals(null, ClipPlanner.plan(Replies.timerSet(600, "pasta"), vocab))
         assertEquals(null, ClipPlanner.plan("", vocab))
     }
+
+    @Test
+    fun `weather answers can be spoken from clips`() {
+        val words = Regex("[^a-zàèéìòù0-9]+").split(
+            (Replies.condition(0) + " " + Replies.condition(61) + " " + Replies.rainSummary(IntArray(24))).lowercase(),
+        ).filter { it.isNotEmpty() }.toSet() + setOf("adesso", "ci", "sono", "gradi", "oggi", "massima", "minima", "18")
+        val plan = ClipPlanner.plan("Adesso ci sono 18 gradi, sereno. Oggi massima 18, minima 18.", words)
+        assertEquals(listOf("adesso", "ci", "sono", "18", "gradi", "sereno", "oggi", "massima", "18", "minima", "18"), plan)
+    }
 }

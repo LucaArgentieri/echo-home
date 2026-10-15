@@ -737,6 +737,8 @@ class MainActivity : Activity() {
     /** Text field entry point: known commands run as such, anything else is a plain music search. */
     private fun runCommand(text: String, fromVoice: Boolean = false, detail: String = ""): EchoIntent? {
         val intent = IntentParser.parse(text)
+        // Label only, never the recognised text.
+        android.util.Log.i("EchoHome", "intent: ${intent?.let { it::class.simpleName } ?: "none"} (voice=$fromVoice)")
         // Only music commands need Meld; timer, volume and time work without it.
         val needsMeld = when (intent) {
             EchoIntent.MusicPause, EchoIntent.MusicResume, EchoIntent.MusicNext, EchoIntent.MusicPrevious,
@@ -970,7 +972,7 @@ class MainActivity : Activity() {
                 val loadedMs = (System.nanoTime() - started) / 1_000_000
                 val decoded = engine.transcribe(samples)
                 // Timings only, never the text or the audio.
-                android.util.Log.i("EchoHome", "stt: cold=$coldStart load=${loadedMs}ms total=${(System.nanoTime() - started) / 1_000_000}ms audio=${speechSec}s")
+                android.util.Log.i("EchoHome", "stt: cold=$coldStart load=${loadedMs}ms total=${(System.nanoTime() - started) / 1_000_000}ms audio=${speechSec}s peak=$peak")
                 decoded
             } catch (t: Throwable) {
                 mainHandler.post {
