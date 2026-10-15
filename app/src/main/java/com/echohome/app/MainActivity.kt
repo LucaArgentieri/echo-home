@@ -521,7 +521,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(28), 0, dp(28), dp(6))
             addView(statusView, LinearLayout.LayoutParams(0, wrap, 1f))
-            addView(assistantView)
+            addView(assistantView, LinearLayout.LayoutParams(dp(72), dp(40)))
         }
 
         statusView.addTextChangedListener(object : android.text.TextWatcher {
@@ -652,14 +652,7 @@ class MainActivity : Activity() {
 
     /** ○ idle (wake word armed), ● listening, ◌ working. A dim ○ means the wake word is off. */
     private fun renderAssistant() {
-        assistantView.text = when (assistantState) {
-            AssistantState.IDLE -> "○"
-            AssistantState.LISTENING -> "● Ti ascolto…"
-            AssistantState.THINKING -> "◌ Elaboro…"
-        }
-        assistantView.setTextColor(
-            if (assistantState == AssistantState.IDLE && !wakeEnabled) Color.rgb(90, 90, 90) else Color.WHITE,
-        )
+        // No glyph or label: the gradient bar tells the state; this view is only the touch target.
         updateGlow()
     }
 
@@ -669,6 +662,7 @@ class MainActivity : Activity() {
             assistantState == AssistantState.LISTENING -> GlowBar.Mode.LISTEN
             assistantState == AssistantState.THINKING -> GlowBar.Mode.THINK
             speakingCount > 0 -> GlowBar.Mode.SPEAK
+            !wakeEnabled -> GlowBar.Mode.DIM
             else -> GlowBar.Mode.OFF
         }
     }

@@ -19,6 +19,8 @@ class GlowBar(context: Context) : View(context) {
 
     enum class Mode(val colors: IntArray, val periodMs: Long) {
         OFF(intArrayOf(), 0),
+        /** Idle with the wake word switched off: a thin static grey line. */
+        DIM(intArrayOf(), 0),
         LISTEN(intArrayOf(0xFF3B82F6.toInt(), 0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt()), 2400),
         THINK(intArrayOf(0xFFF59E0B.toInt(), 0xFFF97316.toInt(), 0xFFFACC15.toInt()), 1200),
         SPEAK(intArrayOf(0xFF22C55E.toInt(), 0xFF14B8A6.toInt(), 0xFF84CC16.toInt()), 3200),
@@ -43,6 +45,13 @@ class GlowBar(context: Context) : View(context) {
                 visibility = INVISIBLE
                 return
             }
+            if (value == Mode.DIM) {
+                paint.shader = null
+                paint.color = 0xFF3A3A3A.toInt()
+                visibility = VISIBLE
+                invalidate()
+                return
+            }
             buildShader()
             animator.duration = value.periodMs
             visibility = VISIBLE
@@ -57,7 +66,7 @@ class GlowBar(context: Context) : View(context) {
     }
 
     private fun buildShader() {
-        if (width == 0 || mode == Mode.OFF) return
+        if (width == 0 || mode.colors.isEmpty()) return
         val c = mode.colors
         // One colour cycle across the bar, repeated: sliding by one width looks seamless.
         shader = LinearGradient(0f, 0f, width.toFloat(), 0f, intArrayOf(c[0], c[1], c[2], c[0]), null, Shader.TileMode.REPEAT)
@@ -65,6 +74,10 @@ class GlowBar(context: Context) : View(context) {
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (mode == Mode.DIM) {
+            canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+            return
+        }
         val s = shader ?: return
         matrix.setTranslate(phase * width, 0f)
         s.setLocalMatrix(matrix)
