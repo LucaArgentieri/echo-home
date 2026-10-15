@@ -297,16 +297,15 @@ class MainActivity : Activity() {
         fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
         val match = ViewGroup.LayoutParams.MATCH_PARENT
         val wrap = ViewGroup.LayoutParams.WRAP_CONTENT
-        val white = Color.WHITE
-        val grey = Color.rgb(170, 170, 170)
-        val amber = Color.rgb(255, 193, 7)
-        val blue = Color.rgb(144, 202, 249)
-        val light = android.graphics.Typeface.create("sans-serif-light", android.graphics.Typeface.NORMAL)
+        val white = M3.onSurface
+        val grey = M3.onSurfaceVariant
+        val amber = M3.tertiary
+        val blue = M3.primary
 
-        fun text(sizeSp: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
-            textSize = sizeSp
+        // Text in the M3 type scale (see M3.kt); [scale] enlarges it for a 5" display seen from afar.
+        fun text(role: M3.Type, scale: Float, color: Int) = TextView(this).apply {
+            M3.apply(this, role, scale)
             setTextColor(color)
-            if (bold) typeface = android.graphics.Typeface.DEFAULT_BOLD
             includeFontPadding = false
         }
         fun icon(res: Int, sizeDp: Int, onClick: () -> Unit) = ImageButton(this).apply {
@@ -318,7 +317,7 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
         }
         // Material-style tonal surface: rounded, slightly lighter than the black background, with a ripple.
-        fun surface(v: View, fill: Int, radiusDp: Int = 28) {
+        fun surface(v: View, fill: Int, radiusDp: Int = M3.SHAPE_EXTRA_LARGE) {
             v.background = android.graphics.drawable.RippleDrawable(
                 android.content.res.ColorStateList.valueOf(0x33FFFFFF),
                 android.graphics.drawable.GradientDrawable().apply { setColor(fill); cornerRadius = dp(radiusDp).toFloat() },
@@ -330,11 +329,10 @@ class MainActivity : Activity() {
             setPadding(dp(24), dp(16), dp(24), dp(16))
             minHeight = dp(64)
             gravity = Gravity.CENTER
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
         }
-        fun homeButton() = text(22f, grey).apply {
+        fun homeButton() = text(M3.Type.LABEL_LARGE, 1.6f, grey).apply {
             text = "‹ Home"
-            surface(this, Color.rgb(28, 28, 33), 24)
+            surface(this, M3.surfaceContainerHigh, 24)
             setPadding(dp(20), dp(10), dp(24), dp(10))
             minHeight = dp(48)
             gravity = Gravity.CENTER_VERTICAL
@@ -349,23 +347,22 @@ class MainActivity : Activity() {
         }
 
         // ---- Home: the hub. Big clock, date, current weather; timer and music only as a line when active.
-        clockView = text(92f, white).apply {
-            typeface = light
+        clockView = text(M3.Type.DISPLAY_LARGE, 1.65f, white).apply {
             gravity = Gravity.CENTER
             setOnLongClickListener { // hidden developer panel
                 debugPanel.visibility = if (debugPanel.visibility == View.VISIBLE) View.GONE else View.VISIBLE
                 true
             }
         }
-        dayView = text(20f, grey).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER } // "LUNEDÌ 12 OTTOBRE"
-        weatherTopView = chip(text(24f, white).apply { text = "–°" }, Color.rgb(28, 28, 33)).apply {
+        dayView = text(M3.Type.TITLE_MEDIUM, 1.3f, grey).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER } // "LUNEDÌ 12 OTTOBRE"
+        weatherTopView = chip(text(M3.Type.LABEL_LARGE, 1.8f, M3.onSurface).apply { text = "–°" }, M3.surfaceContainerHigh).apply {
             setOnClickListener { openWeatherScreen() }
         }
-        homeTimerView = chip(text(26f, amber), Color.rgb(51, 41, 0)).apply {
+        homeTimerView = chip(text(M3.Type.LABEL_LARGE, 1.9f, M3.onTertiaryContainer), M3.tertiaryContainer).apply {
             visibility = View.GONE
             setOnClickListener { showScreen(Screen.TIMERS) }
         }
-        homeMusicView = chip(text(20f, white), Color.rgb(28, 28, 33)).apply {
+        homeMusicView = chip(text(M3.Type.LABEL_LARGE, 1.5f, M3.onSecondaryContainer), M3.secondaryContainer).apply {
             maxLines = 1
             maxWidth = dp(420)
             ellipsize = android.text.TextUtils.TruncateAt.END
@@ -436,10 +433,10 @@ class MainActivity : Activity() {
         }
 
         // ---- Weather: only the weather.
-        weatherTitleView = text(22f, grey).apply { gravity = Gravity.CENTER }
-        weatherTempView = text(96f, white).apply { typeface = light; gravity = Gravity.CENTER }
-        weatherCondView = text(36f, blue).apply { gravity = Gravity.CENTER }
-        weatherDetailView = text(26f, grey).apply { gravity = Gravity.CENTER }
+        weatherTitleView = text(M3.Type.TITLE_LARGE, 1f, grey).apply { gravity = Gravity.CENTER }
+        weatherTempView = text(M3.Type.DISPLAY_LARGE, 1.7f, white).apply { gravity = Gravity.CENTER }
+        weatherCondView = text(M3.Type.HEADLINE_LARGE, 1.1f, blue).apply { gravity = Gravity.CENTER }
+        weatherDetailView = text(M3.Type.HEADLINE_SMALL, 1.1f, grey).apply { gravity = Gravity.CENTER }
         val weatherBody = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -456,15 +453,15 @@ class MainActivity : Activity() {
         // ---- Timers: only the timers (one big, or up to four stacked).
         timerRows = List(KitchenTimer.MAX_TIMERS) {
             Pair(
-                text(20f, grey).apply { gravity = Gravity.CENTER; visibility = View.GONE },
-                text(48f, amber).apply { typeface = light; gravity = Gravity.CENTER; visibility = View.GONE },
+                text(M3.Type.TITLE_MEDIUM, 1.25f, grey).apply { gravity = Gravity.CENTER; visibility = View.GONE },
+                text(M3.Type.DISPLAY_MEDIUM, 1.07f, amber).apply { gravity = Gravity.CENTER; visibility = View.GONE },
             )
         }
-        timerHintView = text(24f, grey).apply { gravity = Gravity.CENTER }
-        timerCancelView = text(24f, white).apply {
+        timerHintView = text(M3.Type.TITLE_LARGE, 1.1f, grey).apply { gravity = Gravity.CENTER }
+        timerCancelView = text(M3.Type.LABEL_LARGE, 1.7f, M3.onTertiaryContainer).apply {
             text = "Annulla timer"
             gravity = Gravity.CENTER
-            surface(this, Color.rgb(51, 41, 0))
+            surface(this, M3.tertiaryContainer)
             setPadding(dp(32), dp(14), dp(32), dp(14))
             setOnClickListener { cancelAllFromScreen() }
         }
@@ -489,9 +486,9 @@ class MainActivity : Activity() {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(Color.rgb(28, 28, 28))
         }
-        titleView = text(32f, white, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
-        artistView = text(24f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        progressView = text(18f, Color.rgb(120, 120, 120))
+        titleView = text(M3.Type.HEADLINE_LARGE, 1f, white).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END }
+        artistView = text(M3.Type.TITLE_LARGE, 1.1f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        progressView = text(M3.Type.BODY_LARGE, 1.1f, M3.outline)
         previousButton = icon(R.drawable.ic_prev, 64) { controller?.seekToPreviousMediaItem() }
         pauseButton = icon(R.drawable.ic_play, 76) { togglePlayPause() }
         nextButton = icon(R.drawable.ic_next, 64) { controller?.seekToNextMediaItem() }
@@ -532,8 +529,8 @@ class MainActivity : Activity() {
 
         // Bottom bar on every screen: message line on the left, assistant state on the right
         // (tap = listen, long-press = wake word on/off).
-        statusView = text(16f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
-        assistantView = text(28f, white).apply {
+        statusView = text(M3.Type.BODY_MEDIUM, 1.15f, grey).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        assistantView = text(M3.Type.BODY_MEDIUM, 1f, white).apply {
             gravity = Gravity.CENTER_VERTICAL or Gravity.END
             setPadding(dp(16), dp(6), 0, dp(6))
             setOnClickListener { toggleListening() }

@@ -61,6 +61,7 @@ Test without a voice (debug builds): `adb shell "am start -n com.echohome.app/.M
 ## Documentation
 
 - **[docs/GUIDE.md](docs/GUIDE.md)**: from a stock Echo to this setup, and how to customise it (wake word, voice, models, commands, city).
+- [docs/DESIGN.md](docs/DESIGN.md): the Material 3 style reference (colour roles, type scale, shapes) used for every screen.
 - [AGENTS.md](AGENTS.md): architecture and conventions (also for AI coding agents).
 - [docs/revisione-privacy.md](docs/revisione-privacy.md): microphone privacy review (Italian).
 - [docs/V0.4-primo-avvio.md](docs/V0.4-primo-avvio.md): first-boot checklist for the real device (Italian); `scripts/echo-check.sh` takes adb health snapshots (temperature, memory, never audio).
