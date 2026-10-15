@@ -26,6 +26,8 @@ class TextToSpeech(private val context: Context) {
     }
 
     private val executor = Executors.newSingleThreadExecutor()
+    // Joined clips must never wait behind Piper (loading it takes ~30 s on the Echo).
+    private val clipExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var engine: OfflineTts? = null
     private val clips = VoiceClips(context.assets)
@@ -38,16 +40,24 @@ class TextToSpeech(private val context: Context) {
 
     /** Speaks [text]; [onDone] runs on the main thread when the audio has finished (or failed). */
     fun speak(text: String, onDone: () -> Unit) {
+        clipExecutor.execute {
+            val started = System.nanoTime()
+            // Common answers (time, date, timers, weather) are joined from pre-rendered words: instant.
+            val joined = runCatching { clips.compose(text) }.getOrNull()
+            if (joined != null) {
+                Log.i("EchoHome", "tts: clips ${(System.nanoTime() - started) / 1_000_000} ms")
+                runCatching { play(joined.samples, joined.sampleRate) }
+                mainHandler.post(onDone)
+            } else {
+                speakWithPiper(text, onDone)
+            }
+        }
+    }
+
+    private fun speakWithPiper(text: String, onDone: () -> Unit) {
         executor.execute {
             try {
                 val started = System.nanoTime()
-                // Common answers (time, date, timers) are joined from pre-rendered words: instant.
-                clips.compose(text)?.let { joined ->
-                    Log.i("EchoHome", "tts: clips ${(System.nanoTime() - started) / 1_000_000} ms")
-                    play(joined.samples, joined.sampleRate)
-                    mainHandler.post(onDone)
-                    return@execute
-                }
                 val tts = engine ?: createEngine().also { engine = it }
                 val loaded = System.nanoTime()
                 val audio = tts.generate(pronounceable(text), 0, 1.0f)
@@ -76,6 +86,7 @@ class TextToSpeech(private val context: Context) {
         stop()
         executor.execute { engine?.release(); engine = null }
         executor.shutdown()
+        clipExecutor.shutdown()
     }
 
     private fun createEngine(): OfflineTts {
