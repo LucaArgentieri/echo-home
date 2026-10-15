@@ -20,6 +20,16 @@ class MicRecorder(
     private val noSpeechSeconds: Int = 5,
     private val endSilenceSeconds: Float = 0.7f,
 ) {
+    companion object {
+        /**
+         * The Echo's microphone is very quiet (speech peaks around 0.02-0.03 of full scale), which made
+         * the VAD miss speech and Whisper mishear. A fixed digital gain before the models fixes it.
+         */
+        const val MIC_GAIN = 8f
+
+        fun toFloat(sample: Short): Float = (sample / 32768f * MIC_GAIN).coerceIn(-1f, 1f)
+    }
+
     /** [speech] is empty when nobody spoke; [reason] is a short label for the UI. */
     class Result(val speech: FloatArray, val totalSeconds: Float, val reason: String, val peak: Float)
 
@@ -86,8 +96,8 @@ class MicRecorder(
                     val n = record.read(chunk, 0, chunk.size)
                     if (n <= 0) { reason = "microfono interrotto"; break }
                     for (i in 0 until n) {
-                        floats[i] = chunk[i] / 32768f
-                        peak = maxOf(peak, kotlin.math.abs(floats[i]))
+                        floats[i] = toFloat(chunk[i])
+                        peak = maxOf(peak, kotlin.math.abs(chunk[i] / 32768f)) // raw level, for diagnostics
                     }
                     System.arraycopy(floats, 0, raw, total, minOf(n, raw.size - total))
                     detector.acceptWaveform(if (n == floats.size) floats else floats.copyOf(n))

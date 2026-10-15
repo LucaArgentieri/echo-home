@@ -115,7 +115,7 @@ class WakeWordListener(private val assets: AssetManager) {
                 while (running) {
                     val n = record.read(chunk, 0, chunk.size)
                     if (n <= 0) break
-                    for (i in 0 until n) floats[i] = chunk[i] / 32768f
+                    for (i in 0 until n) floats[i] = MicRecorder.toFloat(chunk[i])
                     stream.acceptWaveform(if (n == floats.size) floats else floats.copyOf(n), SAMPLE_RATE)
                     while (detector.isReady(stream)) {
                         detector.decode(stream)
