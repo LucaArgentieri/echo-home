@@ -167,6 +167,10 @@ object IntentParser {
     /** "abbasa il volume" -> "abbassa il volume"; null when the first word is not a near miss. */
     private fun repairVerb(cleaned: String): String? {
         val first = cleaned.substringBefore(' ')
+        // Frequent mishearings that are more than 1 edit away: "aimer", "daimer", "alzale".
+        val lower = first.lowercase()
+        if (Regex("[a-z]{0,3}imer").matches(lower) && lower != "timer") return "timer" + cleaned.substring(first.length)
+        if (lower.startsWith("alz") && lower.length in 5..7) return "alza" + cleaned.substring(first.length)
         if (first.length < 4) return null
         val fixed = commandVerbs.firstOrNull { it != first.lowercase() && first.length >= 4 && editDistance(first.lowercase(), it) == 1 } ?: return null
         return fixed + cleaned.substring(first.length)

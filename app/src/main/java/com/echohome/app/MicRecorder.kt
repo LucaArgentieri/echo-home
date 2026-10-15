@@ -22,12 +22,23 @@ class MicRecorder(
 ) {
     companion object {
         /**
-         * The Echo's microphone is very quiet (speech peaks around 0.02-0.03 of full scale), which made
-         * the VAD miss speech and Whisper mishear. A fixed digital gain before the models fixes it.
+         * The Echo's microphone level varies a lot (speech peaks anywhere from 0.02 to 0.45 of full
+         * scale). The VAD and the wake word get a modest fixed gain; the utterance for Whisper is
+         * normalised by its own peak afterwards, so loud speech is never clipped.
          */
-        const val MIC_GAIN = 8f
+        const val MIC_GAIN = 3f
+        private const val STT_TARGET_PEAK = 0.8f
+        private const val STT_MAX_GAIN = 30f
 
         fun toFloat(sample: Short): Float = (sample / 32768f * MIC_GAIN).coerceIn(-1f, 1f)
+
+        /** Scales [samples] in place so the loudest one reaches [STT_TARGET_PEAK] (never attenuates, caps the gain). */
+        fun normalise(samples: FloatArray) {
+            val peak = samples.maxOfOrNull { kotlin.math.abs(it) } ?: return
+            if (peak <= 0f) return
+            val gain = (STT_TARGET_PEAK / peak).coerceIn(1f, STT_MAX_GAIN)
+            if (gain != 1f) for (i in samples.indices) samples[i] *= gain
+        }
     }
 
     /** [speech] is empty when nobody spoke; [reason] is a short label for the UI. */
@@ -99,7 +110,7 @@ class MicRecorder(
                         floats[i] = toFloat(chunk[i])
                         peak = maxOf(peak, kotlin.math.abs(chunk[i] / 32768f)) // raw level, for diagnostics
                     }
-                    System.arraycopy(floats, 0, raw, total, minOf(n, raw.size - total))
+                    for (i in 0 until minOf(n, raw.size - total)) raw[total + i] = chunk[i] / 32768f // ungained, normalised later
                     detector.acceptWaveform(if (n == floats.size) floats else floats.copyOf(n))
                     total += n
 
@@ -115,7 +126,8 @@ class MicRecorder(
                     // Pre/post-roll so word onsets and endings are not clipped.
                     val from = maxOf(0, segment.start - rate / 2)
                     val to = minOf(minOf(total, raw.size), segment.start + segment.samples.size + rate * 3 / 10)
-                    speech = if (to > from) raw.copyOfRange(from, to) else segment.samples
+                    speech = if (to > from) raw.copyOfRange(from, to) else segment.samples.copyOf()
+                    normalise(speech)
                 }
                 detector.clear()
                 detector.reset()

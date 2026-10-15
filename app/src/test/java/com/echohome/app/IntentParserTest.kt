@@ -265,4 +265,11 @@ class IntentParserTest {
         assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzae il volume"))
         assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzo il volume"))
     }
+
+    @Test
+    fun `timer and alza heard wrong on the real Echo`() {
+        assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("aimer 5 minuti"))
+        assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("daimer 5 minuti"))
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzale volume"))
+    }
 }
