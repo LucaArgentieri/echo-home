@@ -23,7 +23,7 @@ Language: user-facing strings and voice replies are **Italian**; code, comments 
 | Milestone | State |
 |---|---|
 | V0.1 Echo Home ↔ Meld via Media3 | Done, verified on an Android 11 emulator |
-| V0.2 wake word → beep → VAD → STT → intent → Meld | Done in code; accuracy **not** validated on real hardware |
+| V0.2 wake word → cue → VAD → STT → intent → Meld | Done in code; accuracy **not** validated on real hardware |
 | V0.3 volume, time, timer, weather, TTS, wake phrases, base UI | Done in code and emulator |
 | V0.4 real-device optimisation (CPU/RAM/heat, 24–48 h, kiosk, boot, foreground service) | **In progress**: LineageOS + Meld + Echo Home run on the real Echo (adb over Wi-Fi). Voice pipeline tuned on the device (15 Oct 2026, see below); kiosk/boot/24–48 h and wake word with music still to do |
 
@@ -48,7 +48,7 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 | `Earcons.kt` | Three synthesised cues (listening, understood, not understood) on their own `AudioTrack`. |
 | `GlowBar.kt` | Bottom gradient bar: the only assistant feedback (listening blue-violet, thinking amber, speaking green; thin grey line when the wake word is off). The old `○` indicator is now just an invisible touch target (tap = listen, long-press = wake word on/off). |
 
-Voice session (in `MainActivity`): wake word (or tap on the assistant indicator) → `beginCommand` takes the wake listener's open mic (`takeHandoff`), pauses Meld (remembering it was playing), plays the listening cue, records with VAD → Whisper → `IntentParser` → `runCommand` → `endSession`. `endSession` waits for TTS/network (`speakingCount`, `beginPending/endPending`, `whenSpeechDone`) before resuming music and restarting the wake listener, so the detector never hears the assistant's own voice. While the assistant speaks, Meld's player volume is ducked to 25% (`duckMusic`/`unduckMusic`, via `MediaController.volume`); during command recording the music stays paused.
+Voice session (in `MainActivity`): wake word (or tap in the bottom-right corner) → `beginCommand` takes the wake listener's open mic (`takeHandoff`), pauses Meld (remembering it was playing), plays the listening cue, records with VAD → Whisper → `IntentParser` → `runCommand` → `endSession`. `endSession` waits for TTS/network (`speakingCount`, `beginPending/endPending`, `whenSpeechDone`) before resuming music and restarting the wake listener, so the detector never hears the assistant's own voice. While the assistant speaks, Meld's player volume is ducked to 25% (`duckMusic`/`unduckMusic`, via `MediaController.volume`); during command recording the music stays paused.
 
 Meld integration: `MediaController` on `SessionToken(ComponentName("com.meld.app"|"com.meld.app.debug", "com.metrolist.music.playback.MusicService"))`. Music search: the controller is a `MediaBrowser`; `playSearch` calls `getSearchResult` (Meld's `onGetSearchResult`, local + YouTube songs) and plays the first item by media id. Meld's own voice search (`MediaItem` with `RequestMetadata.searchQuery` -> `onSetMediaItems` -> `VoiceSearchMatcher`) is only the fallback: it drops artist-only queries (score 0.5 < 0.6 threshold) and the old queue keeps playing. Keep `SEARCH_PAGE_SIZE` large: Meld ignores the page size and Media3 crashes Meld if the answer is longer. Only music intents need Meld; timer/volume/time/weather work without it.
 

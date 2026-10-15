@@ -47,7 +47,7 @@ adb shell am start -n com.echohome.app/.MainActivity
 
 The APK is about 250 MB (almost all Whisper), so installing over Wi-Fi takes minutes. If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` the installed copy was signed with a different key: uninstall it first (this deletes its saved settings).
 
-Reinstalling resets the app's preferences. The wake word is **off by default**: long-press the `○` indicator to turn it on.
+Reinstalling resets the app's preferences. The wake word is **off by default**: long-press the bottom-right corner of the screen (an invisible touch area) to turn it on; a thin grey line along the bottom edge means it is off.
 
 ## 6. What to expect
 
@@ -63,7 +63,7 @@ Measured on the real device (MT8163, 4× Cortex-A53 at 1.3 GHz, often only 2 cor
 
 Things tried and rejected: Whisper tiny (1.7× faster but too inaccurate in Italian), a lighter Piper voice (not faster, the CPU is the limit), "Hey Jarvis"/"Hey Echo" wake words (never fired on this microphone). Big-model engines and LLMs do not fit and would not help: the bottleneck is speech recognition and synthesis, not understanding.
 
-Pause a moment after "Alexa" (wait for the beep) before you speak; the recorder reopens about half a second after the wake word.
+You can speak straight after "Alexa" ("Alexa, che ore sono" in one breath): the microphone stays open and the last 1.6 s are kept. A soft sound confirms listening, understanding or failure; the bar along the bottom edge shows the state.
 
 ## 7. Customise it
 

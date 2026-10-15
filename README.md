@@ -54,7 +54,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.echohome.app/.MainActivity
 ```
 
-First run: grant the microphone permission, **long-press the `○` indicator** (bottom right) to turn the wake word on, then say "Alexa" and a command. A tap on `○` listens once without the wake word. Long-press the clock for the developer panel.
+First run: grant the microphone permission, **long-press the bottom-right corner** of the screen (an invisible touch area, 72×40 dp) to turn the wake word on, then say "Alexa" and a command. A tap in the same corner listens once without the wake word. A thin grey line along the bottom edge means the wake word is off. Long-press the clock for the developer panel.
 
 Test without a voice (debug builds): `adb shell "am start -n com.echohome.app/.MainActivity --es echo_cmd 'timer 5 minuti'"`.
 

@@ -34,7 +34,7 @@ Il primo `./gradlew` scarica il wrapper Gradle (verificato con SHA-256). L'APK �
 ### 4. Primo utilizzo
 1. All'avvio l'app mostra orologio, data e meteo; in basso a sinistra compare «Meld non connesso» finché Meld non risponde.
 2. Concedi il permesso microfono quando richiesto (serve solo per la voce).
-3. Tocca l'indicatore `○` in basso a destra per parlare senza wake word; **pressione lunga** su `○` = attiva/disattiva la wake word «Alexa» (di default spenta).
+3. Tocca l'angolo in basso a destra (area di tocco invisibile) per parlare senza wake word; **pressione lunga** nello stesso angolo = attiva/disattiva la wake word «Alexa» (di default spenta). Una linea grigia sottile in basso = wake word spenta.
 4. Prova: «che ore sono», «timer cinque minuti», «che tempo fa domani», «metti i Radiohead».
 5. Pannello sviluppatore con campo di ricerca testuale: pressione lunga sull'orologio.
 
@@ -63,14 +63,14 @@ Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo s
 
 ## V0.2: pipeline vocale
 
-`Alexa` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
+`Alexa` → suono → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
 
-- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Alexa»** è l'unica attiva (sull'Echo reale «Hey Jarvis» e «Hey Echo» non scattavano; si possono riaggiungere in `keywords.txt`, una riga ciascuna; punteggio 2.0, soglia 0.2; «Alexa» ha il suo punteggio 3.0 e soglia 0.05 sulla riga). «Alexa», su 33 voci sintetiche (3 frasi × 11 voci): 20 riconosciute, e 4 falsi positivi su 110 clip di altre parole («Alessia» è la più confondibile). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Di default OFF: il microfono si apre solo se la attivi (pressione lunga sull'indicatore `○`). Si ferma quando l'app non è in primo piano.
+- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Alexa»** è l'unica attiva (sull'Echo reale «Hey Jarvis» e «Hey Echo» non scattavano; si possono riaggiungere in `keywords.txt`, una riga ciascuna; punteggio 2.0, soglia 0.2; «Alexa» ha il suo punteggio 3.0 e soglia 0.05 sulla riga). «Alexa», su 33 voci sintetiche (3 frasi × 11 voci): 20 riconosciute, e 4 falsi positivi su 110 clip di altre parole («Alessia» è la più confondibile). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Di default OFF: il microfono si apre solo se la attivi (pressione lunga nell'angolo in basso a destra). Si ferma quando l'app non è in primo piano.
 - **VAD**: Silero v5 (`assets/silero-vad`). Fine frase dopo 0,7 s di silenzio; massimo 8 s; 5 s senza parlato = annulla.
 - **STT**: Whisper base int8 in italiano (`assets/whisper-base`), offline. Elabora solo la parte parlata.
 - **Intent**: `IntentParser.kt`, regex + tolleranza di 1 carattere su verbi e comandi brevi. Test: `./gradlew testDebugUnitTest`.
 - **Musica**: dopo la wake word Meld va in pausa; riprende da sola se il comando non è «pausa» o una ricerca.
-- Un tocco sull'indicatore `○` salta la wake word.
+- Un tocco nell'angolo in basso a destra salta la wake word.
 
 ### Privacy del microfono
 Il rilevatore legge 100 ms alla volta in un buffer riusato e li scarta; nessun file, nessun log dell'audio, nessuna rete. La registrazione del comando vive solo in RAM e viene azzerata dopo la trascrizione. Il log contiene solo l'evento «wake word detected».
@@ -96,7 +96,7 @@ L'APK debug pesa circa 250 MB, quasi tutto per Whisper base.
 
 Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Alexa», UI base da smart display. Idee future: issue #1.
 
-- **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `timer pasta 10 minuti` / `annulla il timer della pasta` / `annulla tutti i timer` / `quanto manca al timer` / `quanti timer ho`, `che tempo fa nei prossimi giorni` / `meteo della settimana`, `che tempo fa a Roma domani` (città in una lista fissa, offline), `un po' più forte` / `volume 35` (percentuale esatta), `che giorno è`, `muto` / `riattiva audio`, `mischia` / `non mischiare`, `ripeti brano` / `non ripetere`. Un tocco sull'indicatore mentre parla azzera la voce.
+- **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `timer pasta 10 minuti` / `annulla il timer della pasta` / `annulla tutti i timer` / `quanto manca al timer` / `quanti timer ho`, `che tempo fa nei prossimi giorni` / `meteo della settimana`, `che tempo fa a Roma domani` (città in una lista fissa, offline), `un po' più forte` / `volume 35` (percentuale esatta), `che giorno è`, `muto` / `riattiva audio`, `mischia` / `non mischiare`, `ripeti brano` / `non ripetere`. Un tocco nell'angolo in basso a destra mentre parla azzera la voce.
 - **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.
 - **Timer**: fino a 4 insieme, anche con un nome («timer pasta 10 minuti»). Le scadenze sono salvate, quindi suonano anche se l'app era chiusa. Alla scadenza dice «Il timer pasta è scaduto» e poi suona fino a quando non lo fermi (tocco o «annulla timer»).
 - **Meteo** (Open-Meteo, senza chiave): fisso su San Giuliano Milanese; a voce si può chiedere anche un'altra città tra una quarantina di città italiane (`che tempo fa a Roma`, coordinate nel codice: nessuna ricerca online, il testo parlato non lascia il dispositivo). Icone a emoji accanto alle condizioni (luna di notte). `che tempo fa` → temperatura e condizioni adesso, massima/minima di oggi. `che tempo farà domani` → minima, massima, condizioni e probabilità di pioggia **per ognuna delle 24 ore** (tabella a schermo; a voce un riassunto con le fasce a rischio, dal 40%). Unica chiamata di rete dell'app (`api.open-meteo.com`), con le sole coordinate della città; risultato in cache per 10 minuti e, se la rete manca, si usa l'ultimo dato.
@@ -108,7 +108,7 @@ Schermata unica, nera e minimale, pensata per 960×480 (Echo Show 5), a schermo 
 - Home minimale: data, ora grande, meteo attuale; timer e brano in riproduzione compaiono come una riga solo se attivi. Meteo, timer e musica hanno ciascuno la propria schermata a schermo intero e dopo 20 s senza tocchi (30 s la musica) si torna alla Home. Il meteo si aggiorna ogni 30 minuti (non mentre lo schermo notturno è spento). Di notte (23–6) la luminosità è al 10%, e all'1% dopo 3 minuti di quiete; un tocco o un comando la riporta su.
 - **Interrompere la voce con la wake word** (sperimentale, **spento** di default; interruttore nel pannello sviluppatore, pressione lunga sull'orologio). Durante la risposta il rilevatore ascolta con il cancellatore d'eco della piattaforma, se la ROM ce l'ha; se la wake word scatta, la voce si ferma e parte un nuovo comando. Non validato: serve l'Echo.
 - Al centro giorno e data; sotto copertina, titolo, artista, tempo e controlli ◀ ▶ del player.
-- In basso a sinistra la riga dei messaggi (risposte, errori, «Meld non connesso»); a destra l'indicatore dell'assistente: `○` pronto, `● Ti ascolto…`, `◌ Elaboro…`. **Tocco = ascolto manuale** (e ferma l'ascolto in corso); **pressione lunga = wake word on/off** (`○` grigio = spenta).
+- In basso a sinistra la riga dei messaggi (risposte, errori, «Meld non connesso»); a destra, invisibile, l'area di tocco dell'assistente (lo stato lo mostra la barra a gradiente in basso). **Tocco = ascolto manuale** (e ferma l'ascolto in corso); **pressione lunga = wake word on/off** (linea grigia in basso = spenta).
 - Pressione lunga sull'ora = pannello sviluppatore (campo di ricerca, «Apri Meld»). «Che tempo farà domani» apre la tabella oraria a tutto schermo (tocco per chiuderla).
 - Per provare lo schermo dell'Echo nell'emulatore: `adb shell wm size 480x960 && adb shell wm density 200` (emulatore in landscape); `wm size reset` / `wm density reset` per tornare indietro.
 
