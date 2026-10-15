@@ -12,3 +12,4 @@ app/src/main/assets/silero-vad/
 gradle/wrapper/gradle-wrapper.jar
 app/src/main/assets/tts/
 echo-samples.csv
+app/src/main/assets/voice/

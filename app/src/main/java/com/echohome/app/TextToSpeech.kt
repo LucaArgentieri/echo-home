@@ -28,6 +28,7 @@ class TextToSpeech(private val context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var engine: OfflineTts? = null
+    private val clips = VoiceClips(context.assets)
     @Volatile private var track: AudioTrack? = null
 
     /** Loads the voice in the background so the first answer does not pay for it. */
@@ -40,6 +41,13 @@ class TextToSpeech(private val context: Context) {
         executor.execute {
             try {
                 val started = System.nanoTime()
+                // Common answers (time, date, timers) are joined from pre-rendered words: instant.
+                clips.compose(text)?.let { joined ->
+                    Log.i("EchoHome", "tts: clips ${(System.nanoTime() - started) / 1_000_000} ms")
+                    play(joined.samples, joined.sampleRate)
+                    mainHandler.post(onDone)
+                    return@execute
+                }
                 val tts = engine ?: createEngine().also { engine = it }
                 val loaded = System.nanoTime()
                 val audio = tts.generate(pronounceable(text), 0, 1.0f)

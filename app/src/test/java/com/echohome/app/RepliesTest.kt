@@ -44,4 +44,20 @@ class RepliesTest {
         assertEquals("Hai 2 timer: pasta tra 5 minuti e uova tra 8 minuti.", Replies.timersRemaining(listOf("pasta" to 300, "uova" to 480)))
         assertEquals("Mancano 5 minuti.", Replies.timersRemaining(listOf(null to 300)))
     }
+
+    private val vocab = setOf("sono", "le", "e", "14", "42", "è", "mezzanotte", "oggi", "mercoledì", "ottobre", "timer", "impostato", "per", "10", "minuti")
+
+    @Test
+    fun `common answers can be spoken from clips`() {
+        assertEquals(listOf("sono", "le", "14", "e", "42"), ClipPlanner.plan(Replies.time(14, 42), vocab))
+        assertEquals(listOf("è", "mezzanotte"), ClipPlanner.plan(Replies.time(0, 0), vocab))
+        assertEquals(listOf("oggi", "è", "mercoledì", "14", "ottobre"), ClipPlanner.plan(Replies.date("mercoledì", 14, "ottobre"), vocab))
+        assertEquals(listOf("timer", "impostato", "per", "10", "minuti"), ClipPlanner.plan(Replies.timerSet(600), vocab))
+    }
+
+    @Test
+    fun `answers with an unknown word fall back to the voice`() {
+        assertEquals(null, ClipPlanner.plan(Replies.timerSet(600, "pasta"), vocab))
+        assertEquals(null, ClipPlanner.plan("", vocab))
+    }
 }
