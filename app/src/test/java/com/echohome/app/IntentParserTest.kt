@@ -259,4 +259,10 @@ class IntentParserTest {
         assertNull(IntentParser.parse("che bella giornata oggi"))
         assertNull(IntentParser.parse("che cosa sono"))
     }
+
+    @Test
+    fun `garbled alza is repaired`() {
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzae il volume"))
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzo il volume"))
+    }
 }

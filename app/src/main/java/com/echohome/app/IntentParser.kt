@@ -147,7 +147,7 @@ object IntentParser {
     // Verbs the recogniser tends to garble, repaired when the first word is within 1 edit (5+ letters only).
     private val commandVerbs = listOf(
         "abbassa", "aumenta", "diminuisci", "annulla", "cancella", "imposta", "riprendi", "mostra",
-        "ripristina", "riattiva", "disattiva", "elimina",
+        "ripristina", "riattiva", "disattiva", "elimina", "alza", "abbassa",
     )
 
     fun parse(text: String): EchoIntent? {
@@ -167,8 +167,8 @@ object IntentParser {
     /** "abbasa il volume" -> "abbassa il volume"; null when the first word is not a near miss. */
     private fun repairVerb(cleaned: String): String? {
         val first = cleaned.substringBefore(' ')
-        if (first.length < 5) return null
-        val fixed = commandVerbs.firstOrNull { it != first.lowercase() && editDistance(first.lowercase(), it) == 1 } ?: return null
+        if (first.length < 4) return null
+        val fixed = commandVerbs.firstOrNull { it != first.lowercase() && first.length >= 4 && editDistance(first.lowercase(), it) == 1 } ?: return null
         return fixed + cleaned.substring(first.length)
     }
 
