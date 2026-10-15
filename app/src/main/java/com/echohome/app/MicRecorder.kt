@@ -50,10 +50,10 @@ class MicRecorder(
     val isRecording get() = recording
 
     @SuppressLint("MissingPermission")
-    fun start(onDone: (Result) -> Unit) {
-        if (recording) return
+    fun start(handoff: WakeWordListener.Handoff? = null, onDone: (Result) -> Unit) {
+        if (recording) { handoff?.discard(); return }
         recording = true
-        Thread({ onDone(capture()) }, "mic-recorder").start()
+        Thread({ onDone(capture(handoff)) }, "mic-recorder").start()
     }
 
     /** Manual stop (the "Fine" button): whatever speech was heard so far is used. */
@@ -79,14 +79,17 @@ class MicRecorder(
     }
 
     @SuppressLint("MissingPermission")
-    private fun capture(): Result {
+    private fun capture(handoff: WakeWordListener.Handoff?): Result {
         val rate = SpeechToText.SAMPLE_RATE
         val chunk = ShortArray(rate / 10) // 100 ms
         val floats = FloatArray(chunk.size)
         var total = 0
         var peak = 0f
         // Raw copy of the utterance (RAM only, zeroed below): the VAD cuts a little too tight.
-        val raw = FloatArray(rate * (maxSeconds + 1))
+        val prefixLen = handoff?.prefix?.size ?: 0
+        val raw = FloatArray(prefixLen + rate * (maxSeconds + 1))
+        handoff?.prefix?.copyInto(raw) // what was heard just before the wake word fired (wake word + start of the command)
+        total = prefixLen
         var speech = FloatArray(0)
         var reason = "microfono non disponibile"
         var record: AudioRecord? = null
@@ -95,13 +98,13 @@ class MicRecorder(
             val minBuffer = AudioRecord.getMinBufferSize(
                 rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
             )
-            record = AudioRecord(
+            record = handoff?.record ?: AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minBuffer, chunk.size * 4),
             )
             if (record.state == AudioRecord.STATE_INITIALIZED) {
-                record.startRecording()
+                if (handoff == null) record.startRecording()
                 reason = "tempo massimo"
                 while (recording) {
                     val n = record.read(chunk, 0, chunk.size)
@@ -115,17 +118,18 @@ class MicRecorder(
                     total += n
 
                     if (!detector.empty()) { reason = "fine frase"; break }
-                    if (total >= rate * noSpeechSeconds && !detector.isSpeechDetected()) {
+                    if (total - prefixLen >= rate * noSpeechSeconds && !detector.isSpeechDetected()) {
                         reason = "nessun parlato"; break
                     }
-                    if (total >= rate * maxSeconds) break
+                    if (total - prefixLen >= rate * maxSeconds) break
                 }
                 if (detector.empty()) detector.flush() // manual stop / time limit: close the open segment
                 if (!detector.empty()) {
                     val segment = detector.front()
                     // Pre/post-roll so word onsets and endings are not clipped.
-                    val from = maxOf(0, segment.start - rate / 2)
-                    val to = minOf(minOf(total, raw.size), segment.start + segment.samples.size + rate * 3 / 10)
+                    // With a hand-over the whole prefix is kept: it holds the wake word and any command start.
+                    val from = if (prefixLen > 0) 0 else maxOf(0, segment.start - rate / 2)
+                    val to = minOf(minOf(total, raw.size), prefixLen + segment.start + segment.samples.size + rate * 3 / 10)
                     speech = if (to > from) raw.copyOfRange(from, to) else segment.samples.copyOf()
                     normalise(speech)
                 }
@@ -144,7 +148,7 @@ class MicRecorder(
             floats.fill(0f)
             raw.fill(0f)
         }
-        return Result(speech, total / rate.toFloat(), reason, peak)
+        return Result(speech, (total - prefixLen) / rate.toFloat(), reason, peak)
     }
 
     fun release() {

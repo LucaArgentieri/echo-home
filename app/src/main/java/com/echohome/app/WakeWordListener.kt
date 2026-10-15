@@ -56,9 +56,27 @@ class WakeWordListener(private val assets: AssetManager) {
         running = false
         thread?.takeIf { it !== Thread.currentThread() }?.join(2000)
         thread = null
+        takeHandoff()?.discard() // a mic left open for a command that never started
     }
 
     private var effects: List<android.media.audiofx.AudioEffect> = emptyList()
+
+    /**
+     * The open microphone plus the last ~1.6 s heard (raw, RAM only), handed to the command recorder
+     * when the wake word fires so no speech is lost between "Alexa" and the command.
+     */
+    class Handoff(val record: AudioRecord, val prefix: FloatArray) {
+        fun discard() {
+            runCatching { record.stop() }
+            record.release()
+            prefix.fill(0f)
+        }
+    }
+
+    @Volatile private var handoff: Handoff? = null
+
+    /** The microphone left open by the last wake word, or null. The caller now owns it. */
+    fun takeHandoff(): Handoff? = handoff.also { handoff = null }
 
     private fun newSpotter(): KeywordSpotter {
         spotter?.let { return it }
@@ -87,6 +105,9 @@ class WakeWordListener(private val assets: AssetManager) {
     private fun listen(onWake: () -> Unit) {
         val chunk = ShortArray(SAMPLE_RATE / 10)
         val floats = FloatArray(chunk.size)
+        val ring = ShortArray(SAMPLE_RATE * 2) // last 2 s, only used to hand over to the command recorder
+        var ringPos = 0
+        var ringFill = 0
         var record: AudioRecord? = null
         var woke = false
         try {
@@ -100,7 +121,7 @@ class WakeWordListener(private val assets: AssetManager) {
                     if (bargeIn) MediaRecorder.AudioSource.VOICE_COMMUNICATION else MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     SAMPLE_RATE,
                     AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
-                    maxOf(minBuffer, chunk.size * 4),
+                    maxOf(minBuffer, chunk.size * 8), // room for the hand-over to the command recorder
                 )
                 if (record.state != AudioRecord.STATE_INITIALIZED) return
                 if (bargeIn) {
@@ -111,11 +132,17 @@ class WakeWordListener(private val assets: AssetManager) {
                     effects = listOfNotNull(aec, ns)
                     Log.i("EchoHome", "barge-in: echo canceller ${if (aec != null) "on" else "not available"}")
                 }
-                record.startRecording()
+                val mic: AudioRecord = record
+                mic.startRecording()
                 while (running) {
-                    val n = record.read(chunk, 0, chunk.size)
+                    val n = mic.read(chunk, 0, chunk.size)
                     if (n <= 0) break
-                    for (i in 0 until n) floats[i] = MicRecorder.toFloat(chunk[i])
+                    for (i in 0 until n) {
+                        floats[i] = MicRecorder.toFloat(chunk[i])
+                        ring[ringPos] = chunk[i]
+                        ringPos = (ringPos + 1) % ring.size
+                    }
+                    ringFill = minOf(ring.size, ringFill + n)
                     stream.acceptWaveform(if (n == floats.size) floats else floats.copyOf(n), SAMPLE_RATE)
                     while (detector.isReady(stream)) {
                         detector.decode(stream)
@@ -127,7 +154,16 @@ class WakeWordListener(private val assets: AssetManager) {
                             break
                         }
                     }
-                    if (woke) break
+                    if (woke) {
+                        if (!bargeIn) {
+                            // Keep the mic open: hand it over with the tail of what was just heard.
+                            val keep = minOf(ringFill, SAMPLE_RATE * 16 / 10)
+                            val prefix = FloatArray(keep) { ring[(ringPos - keep + it + ring.size) % ring.size] / 32768f }
+                            handoff = Handoff(mic, prefix)
+                            record = null
+                        }
+                        break
+                    }
                 }
             } finally {
                 stream.release()
@@ -142,6 +178,7 @@ class WakeWordListener(private val assets: AssetManager) {
             record?.release()
             chunk.fill(0)
             floats.fill(0f)
+            ring.fill(0)
         }
         if (woke) onWake()
     }

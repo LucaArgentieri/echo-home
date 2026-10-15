@@ -5,6 +5,7 @@ Revisione del codice a mano (non una verifica sul dispositivo). Esito: **nessun 
 ## Cosa è stato controllato
 - **Audio su disco**: nessun `File`, `openFileOutput`, `cacheDir` o scrittura nei sorgenti che toccano il microfono (`WakeWordListener`, `MicRecorder`, `SpeechToText`). L'unica scrittura in `filesDir` è la copia di `espeak-ng-data` (dati del TTS).
 - **Audio nei log**: i `Log` contengono solo etichette e tempi («wake word fired: <parola chiave>», durate TTS, stato del ducking, esito dell'aggiornamento meteo). Nessun testo riconosciuto, nessun audio.
+- **Finestra mobile di 2 s** (aggiunta il 15 ott 2026): il rilevatore conserva in RAM, in un buffer circolare, gli ultimi 2 s ascoltati per passare al registratore la parte di frase già detta quando scatta la wake word («Alexa che ore sono» detto d'un fiato). Il buffer viene sovrascritto di continuo, azzerato quando il rilevatore si ferma e non va mai su disco, log o rete. Va ricontrollato nella prossima revisione.
 - **Buffer**: i buffer del rilevatore, del registratore e del TTS sono azzerati a fine uso (`fill(0)`); i campioni dell'enunciato sono azzerati dopo la trascrizione.
 - **Rete**: l'unica chiamata dell'app è Open-Meteo (solo coordinate: casa o una città della lista fissa, mai il testo parlato) più le cover di Meld. Le ricerche musicali vanno a Meld/YouTube Music, come da progetto.
 - **Backup**: `allowBackup="false"`. Il comando di prova `echo_cmd` è ignorato nelle build non debug.

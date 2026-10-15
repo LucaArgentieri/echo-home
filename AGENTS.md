@@ -38,7 +38,7 @@ Known limits: wake word with music playing, real STT accuracy and real performan
 | `Weather.kt` | `WeatherClient` (Open-Meteo, **home = San Giuliano Milanese**, no key; `fetch(lat, lon)` for other cities) + `Cities` (fixed offline table of ~40 Italian cities, no geocoding: the spoken text never goes online) + `WeatherParser` (org.json). |
 | `VolumeMath.kt` | Pure. Exact volume % = system step (15 on the Echo, rounded up) + Meld player volume as trim. |
 | `KitchenTimer.kt` | Up to 4 named countdowns; deadlines stored as wall-clock in SharedPreferences (one line per timer), re-armed on start. |
-| `WakeWordListener.kt` | `AudioRecord` → sherpa-onnx `KeywordSpotter`; mic released when it fires or on `stop()`. Keywords in `assets/kws/keywords.txt` (BPE tokens, one per line). |
+| `WakeWordListener.kt` | `AudioRecord` → sherpa-onnx `KeywordSpotter`; keeps a 2 s RAM ring buffer and, when it fires, hands the still-open mic plus the last 1.6 s to `MicRecorder` (`Handoff`) so the command start is not lost; mic released on `stop()`. Keywords in `assets/kws/keywords.txt` (BPE tokens, one per line). |
 | `MicRecorder.kt` | Records one utterance with Silero VAD (end after 0.7 s silence, max 8 s, 5 s no-speech timeout), adds 0.5 s pre-roll / 0.3 s post-roll, returns speech only. |
 | `SpeechToText.kt` | sherpa-onnx offline Whisper **base int8**, language `it`; strips non-speech tags like `[Musica]`. |
 | `TextToSpeech.kt` | sherpa-onnx Piper VITS "paola" (Italian) → `AudioTrack`. Copies `espeak-ng-data` from assets to `filesDir` once. Logs timings only. |

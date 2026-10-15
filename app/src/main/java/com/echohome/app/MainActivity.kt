@@ -900,9 +900,10 @@ class MainActivity : Activity() {
     }
 
     private fun beginCommand(fromWake: Boolean) {
-        if (voiceBusy || !visible) return
+        if (voiceBusy || !visible) { wakeListener.takeHandoff()?.discard(); return }
         android.util.Log.i("EchoHome", if (fromWake) "wake word detected" else "manual listen")
         voiceBusy = true
+        val handoff = wakeListener.takeHandoff() // the open mic + last 1.6 s, so the command start is not lost
         wakeListener.stop() // the command recorder needs the mic
 
         // Quiet the music so it does not drown the command (cheaper than echo cancellation).
@@ -913,9 +914,14 @@ class MainActivity : Activity() {
         statusView.text = ""
         setAssistant(AssistantState.LISTENING)
         val startRecording = {
-            if (voiceBusy) recorder.start { result -> mainHandler.post { onUtterance(result) } }
+            if (voiceBusy) {
+                recorder.start(handoff) { result -> mainHandler.post { onUtterance(result) } }
+            } else {
+                handoff?.discard()
+            }
+            Unit
         }
-        if (fromWake) {
+        if (fromWake && handoff == null) { // with a hand-over we record at once: a beep would be heard
             beep()
             mainHandler.postDelayed(startRecording, BEEP_SETTLE_MS) // do not record our own beep
         } else {
