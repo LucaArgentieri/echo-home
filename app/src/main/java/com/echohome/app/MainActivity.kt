@@ -592,8 +592,12 @@ class MainActivity : Activity() {
     private fun showStatus() {
         statusView.visibility = if (statusView.text.isEmpty()) View.INVISIBLE else View.VISIBLE
         mainHandler.removeCallbacks(hideStatus)
-        mainHandler.postDelayed(hideStatus, STATUS_MS)
+        mainHandler.postDelayed(hideStatus, statusLingerMs)
+        statusLingerMs = STATUS_MS
     }
+
+    // "Non ho capito: “…”" stays long enough to read what the recogniser heard (used to tune the parser).
+    private var statusLingerMs = STATUS_MS
 
     private fun scheduleGoHome() {
         mainHandler.removeCallbacks(goHome)
@@ -847,6 +851,7 @@ class MainActivity : Activity() {
             }
             // Typed text falls back to a plain search; a voice transcript must be a real command.
             null -> if (fromVoice) {
+                statusLingerMs = 20_000L
                 statusView.text = "Non ho capito: “$text” ($detail)"
             } else {
                 showScreen(Screen.MUSIC)
