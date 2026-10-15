@@ -271,5 +271,6 @@ class IntentParserTest {
         assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("aimer 5 minuti"))
         assertEquals(EchoIntent.TimerCreate(300), IntentParser.parse("daimer 5 minuti"))
         assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alzale volume"))
+        assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alsa il volume"))
     }
 }

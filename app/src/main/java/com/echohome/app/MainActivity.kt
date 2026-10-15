@@ -113,6 +113,7 @@ class MainActivity : Activity() {
     private lateinit var dayView: TextView
     private lateinit var weatherTopView: TextView // current weather on Home
     private lateinit var assistantView: TextView
+    private lateinit var glowBar: GlowBar
     private lateinit var debugPanel: LinearLayout
 
     private enum class AssistantState { IDLE, LISTENING, THINKING }
@@ -533,6 +534,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             addView(content, LinearLayout.LayoutParams(match, 0, 1f))
             addView(bottomBar, LinearLayout.LayoutParams(match, wrap))
+            glowBar = GlowBar(this@MainActivity)
+            addView(glowBar, LinearLayout.LayoutParams(match, dp(6)))
         }
         return FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)
@@ -657,6 +660,17 @@ class MainActivity : Activity() {
         assistantView.setTextColor(
             if (assistantState == AssistantState.IDLE && !wakeEnabled) Color.rgb(90, 90, 90) else Color.WHITE,
         )
+        updateGlow()
+    }
+
+    /** Gradient bar: listening, thinking or (while the voice plays) speaking; invisible otherwise. */
+    private fun updateGlow() {
+        glowBar.mode = when {
+            assistantState == AssistantState.LISTENING -> GlowBar.Mode.LISTEN
+            assistantState == AssistantState.THINKING -> GlowBar.Mode.THINK
+            speakingCount > 0 -> GlowBar.Mode.SPEAK
+            else -> GlowBar.Mode.OFF
+        }
     }
 
     private fun setAssistant(state: AssistantState) {
@@ -1122,11 +1136,13 @@ class MainActivity : Activity() {
     private fun speak(text: String, then: () -> Unit = {}) {
         if (speakingCount == 0) duckMusic()
         speakingCount++
+        updateGlow()
         wakeListener.stop() // the normal detector must not hear our own voice
         bargeInActive = false
         startBargeInListener()
         tts.speak(text) {
             speakingCount--
+            updateGlow()
             then()
             if (speakingCount == 0) {
                 if (bargeInActive) {

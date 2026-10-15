@@ -171,6 +171,7 @@ object IntentParser {
         val lower = first.lowercase()
         if (Regex("[a-z]{0,3}imer").matches(lower) && lower != "timer") return "timer" + cleaned.substring(first.length)
         if (lower.startsWith("alz") && lower.length in 5..7) return "alza" + cleaned.substring(first.length)
+        if (lower == "alsa" || lower == "alca" || lower == "alsà") return "alza" + cleaned.substring(first.length)
         if (first.length < 4) return null
         val fixed = commandVerbs.firstOrNull { it != first.lowercase() && first.length >= 4 && editDistance(first.lowercase(), it) == 1 } ?: return null
         return fixed + cleaned.substring(first.length)
