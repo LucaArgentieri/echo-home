@@ -275,4 +275,17 @@ class IntentParserTest {
         assertEquals(EchoIntent.VolumeUp, IntentParser.parse("alsvolume"))
         assertEquals(EchoIntent.VolumeDown, IntentParser.parse("abasa volume"))
     }
+
+    @Test
+    fun `tomorrow's weather in many phrasings`() {
+        listOf(
+            "che tempo farà domani", "meteo domani", "il meteo di domani", "domani che tempo farà", "domani com'è il tempo",
+            "come sarà il tempo domani", "domani pioverà", "piove domani", "previsioni per domani", "che tempo fa domane",
+        ).forEach { assertEquals(it, EchoIntent.WeatherTomorrow, IntentParser.parse(it)) }
+    }
+
+    @Test
+    fun `tomorrow without weather words is not weather`() {
+        assertNull(IntentParser.parse("domani vado al mare"))
+    }
 }

@@ -258,6 +258,11 @@ object IntentParser {
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { EchoIntent.MusicSearch(it) }
         }
+        // Weather for tomorrow in any word order ("domani che tempo farà", "domani com'è il tempo"), "domani" heard 1 edit off.
+        val loose = words.map { squash(it) }
+        if (words.size in 2..8 && loose.any { editDistance(it, "domani") <= 1 } &&
+            loose.any { it == "tempo" || it == "meteo" || it == "previsioni" || it.startsWith("piov") || it.startsWith("nuvol") }
+        ) return EchoIntent.WeatherTomorrow
         // A whole short question within ~1 edit per 5 letters of a known one.
         val flat = squash(cleaned)
         if (words.size in 1..5 && flat.length >= 8) {

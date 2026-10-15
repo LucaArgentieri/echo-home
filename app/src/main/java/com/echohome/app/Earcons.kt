@@ -6,6 +6,8 @@ import android.media.AudioTrack
 import android.os.Handler
 import android.os.Looper
 import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.sin
 
 /**
@@ -18,9 +20,10 @@ class Earcons {
     private val rate = 22_050
     private val handler = Handler(Looper.getMainLooper())
     private val clips: Map<Cue, ShortArray> = mapOf(
-        Cue.LISTENING to tones(1000 to 70),
-        Cue.UNDERSTOOD to tones(700 to 60, 1000 to 90),
-        Cue.NOT_UNDERSTOOD to tones(520 to 90, 330 to 140),
+        // Soft, round "marimba" notes: low-ish pitches, slow attack, exponential decay.
+        Cue.LISTENING to notes(587 to 170),                       // D5
+        Cue.UNDERSTOOD to notes(523 to 120, 659 to 200),          // C5 -> E5, a friendly rise
+        Cue.NOT_UNDERSTOOD to notes(392 to 150, 311 to 260),      // G4 -> Eb4, a gentle fall
     )
 
     /** Fire and forget: plays on its own AudioTrack, released after the clip. */
@@ -50,15 +53,21 @@ class Earcons {
         }
     }
 
-    /** (frequency Hz, length ms) pairs, each with a short fade in/out so nothing clicks. */
-    private fun tones(vararg parts: Pair<Int, Int>): ShortArray {
+    /**
+     * (frequency Hz, length ms) notes played one after the other. Each is a sine with a quiet 2nd and
+     * 3rd harmonic (warmth), a ~15 ms smooth attack and an exponential decay, so nothing sounds sharp.
+     */
+    private fun notes(vararg parts: Pair<Int, Int>): ShortArray {
         val out = ArrayList<Short>()
         for ((hz, ms) in parts) {
             val n = rate * ms / 1000
-            val fade = rate / 200 // 5 ms
+            val attack = rate * 15 / 1000
             for (i in 0 until n) {
-                val env = minOf(1f, i / fade.toFloat(), (n - i) / fade.toFloat())
-                out += (sin(2 * PI * hz * i / rate) * 0.35 * env * Short.MAX_VALUE).toInt().toShort()
+                val t = i / rate.toDouble()
+                val rise = if (i < attack) 0.5 - 0.5 * cos(PI * i / attack) else 1.0
+                val decay = exp(-t * 14.0) * (1.0 - (i.toDouble() / n).let { it * it * it }) // dies out before the end
+                val wave = sin(2 * PI * hz * t) + 0.25 * sin(4 * PI * hz * t) + 0.06 * sin(6 * PI * hz * t)
+                out += (wave * 0.28 * rise * decay * Short.MAX_VALUE).toInt().toShort()
             }
         }
         return out.toShortArray()
