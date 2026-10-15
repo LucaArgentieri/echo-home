@@ -25,7 +25,7 @@ Language: user-facing strings and voice replies are **Italian**; code, comments 
 | V0.1 Echo Home ↔ Meld via Media3 | Done, verified on an Android 11 emulator |
 | V0.2 wake word → beep → VAD → STT → intent → Meld | Done in code; accuracy **not** validated on real hardware |
 | V0.3 volume, time, timer, weather, TTS, wake phrases, base UI | Done in code and emulator |
-| V0.4 real-device optimisation (CPU/RAM/heat, 24–48 h, kiosk, boot, foreground service) | **Not started** (needs LineageOS on the Echo; the device still runs Fire OS) |
+| V0.4 real-device optimisation (CPU/RAM/heat, 24–48 h, kiosk, boot, foreground service) | **In progress**: owner backed up the Fire OS partitions, flashed LineageOS and installed Meld (15 Oct 2026); Echo Home on the device and all measurements still to do |
 
 Known limits: wake word with music playing, real STT accuracy and real performance are untested (the emulator mic path is badly degraded). The wake words are **"Hey Jarvis" / "Hey Echo" / "Alexa"** ("Alexa": 20/33 synthetic clips, 4/110 false hits, mostly "Alessia"; per-keyword `:3.0 #0.05` in `keywords.txt`); a bare "Echo" is not detectable with the sherpa-onnx KWS models (0/10 in offline tests).
 

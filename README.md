@@ -53,7 +53,7 @@ Scrivi `Radiohead` nel pannello sviluppatore e premi `Cerca e riproduci`; poi pr
 
 ## Cosa non c'è ancora
 
-Launcher/kiosk, avvio al boot e ottimizzazione sull'Echo reale (V0.4); vedi issue #1.
+Launcher/kiosk, avvio al boot e ottimizzazione sull'Echo reale (V0.4). LineageOS e Meld sono già installati sull'Echo; le misure e queste voci sono in corso, vedi issue #1.
 
 ## Gradle wrapper su macOS
 
