@@ -112,5 +112,15 @@ Schermata unica, nera e minimale, pensata per 960×480 (Echo Show 5), a schermo 
 - Pressione lunga sull'ora = pannello sviluppatore (campo di ricerca, «Apri Meld»). «Che tempo farà domani» apre la tabella oraria a tutto schermo (tocco per chiuderla).
 - Per provare lo schermo dell'Echo nell'emulatore: `adb shell wm size 480x960 && adb shell wm density 200` (emulatore in landscape); `wm size reset` / `wm density reset` per tornare indietro.
 
+## Novità sull'Echo reale (15 ott 2026)
+
+- **Feedback senza parole**: barra a gradiente in basso (blu-viola ascolto, ambra elaborazione, verde voce) e tre suoni: ti ascolto, capito, non capito. Niente più pallino né scritte; tocco in basso a destra = ascolto, pressione lunga = wake word on/off (linea grigia = spenta).
+- **Wake word senza interruzioni**: il microfono resta aperto dopo «Alexa» e gli ultimi 1,6 s restano in RAM, quindi «Alexa, che ore sono» detto d'un fiato funziona. Solo «Alexa» resta attiva.
+- **Risposte istantanee** per ora, data, timer e meteo da clip di parole pre-generate (`scripts/gen-voice-clips.sh`); le altre frasi usano Piper (7–8 s sull'Echo).
+- **Audio**: normalizzazione del volume per ogni frase (il microfono dell'Echo è molto piano e variabile).
+- **UI Material**: schede tonali per meteo, timer e brano nella Home, ben distanziate e con area di tocco ampia.
+- Prossimamente (issue #1): foto come sfondo e ricerca ricette.
+- Guida in inglese per rifare il progetto: [docs/GUIDE.md](docs/GUIDE.md).
+
 ## Sull'Echo reale
 Lista di step per il primo avvio (flash, controlli, test del microfono e prestazioni): [docs/V0.4-primo-avvio.md](docs/V0.4-primo-avvio.md). Controlli via adb: `scripts/echo-check.sh info` e `scripts/echo-check.sh sample 60` (nessun audio registrato). Rischi del flash: issue #3.

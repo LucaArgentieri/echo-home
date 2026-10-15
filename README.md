@@ -38,6 +38,8 @@ Target: Echo Show 5 2nd gen (`cronos`) running unofficial LineageOS 18.1 (Androi
 
 The device is slow: replies to actions (volume, next track) are shown on screen only, and the wake word sometimes needs two tries. See [issue #1](https://github.com/LucaArgentieri/echo-home/issues/1) for the live to-do list. Not yet done: kiosk/boot service, 24–48 h stability, wake word with music playing.
 
+Planned next (see issue #1): photo backgrounds for the Home, and a recipe search that reads out a plain list of ingredients and steps.
+
 Also runs on any Android 8+ phone or emulator (minus the real microphone and screen).
 
 ## Quick start (build from source)

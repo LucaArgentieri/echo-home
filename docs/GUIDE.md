@@ -91,6 +91,8 @@ Run `./gradlew testDebugUnitTest` after changing the parser or the replies. For 
 - **Do not run `dumpsys media.audio_flinger`** on the Echo: it crashes the audio HAL (it restarts by itself, but the microphone and sound drop for a moment).
 - The wake word is off after every reinstall (see section 5).
 - The stock ROM has no echo canceller: the wake word while music plays is untested and may need software echo cancellation.
+- The microphone is quiet and its level varies a lot (peaks from 0.02 to 0.45): normalise each utterance by its own peak before Whisper (a fixed gain clips loud speech).
+- Whisper loses the first words if the recorder restarts after the wake word: keep the same `AudioRecord` open and hand the last second or two to the recorder.
 - `armeabi-v7a` only: any native library or model runtime must have a 32-bit build.
 - Do not judge speech accuracy from an emulator: its microphone path (host speaker to host mic) is badly distorted.
 

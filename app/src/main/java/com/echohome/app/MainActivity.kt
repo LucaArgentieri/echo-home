@@ -317,9 +317,28 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)).apply { marginEnd = dp(10) }
             setOnClickListener { onClick() }
         }
-        fun homeButton() = text(24f, grey).apply {
+        // Material-style tonal surface: rounded, slightly lighter than the black background, with a ripple.
+        fun surface(v: View, fill: Int, radiusDp: Int = 28) {
+            v.background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                android.graphics.drawable.GradientDrawable().apply { setColor(fill); cornerRadius = dp(radiusDp).toFloat() },
+                null,
+            )
+        }
+        fun chip(v: TextView, fill: Int) = v.apply {
+            surface(this, fill)
+            setPadding(dp(24), dp(16), dp(24), dp(16))
+            minHeight = dp(64)
+            gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+        }
+        fun homeButton() = text(22f, grey).apply {
             text = "‹ Home"
-            setPadding(0, dp(4), dp(24), dp(12))
+            surface(this, Color.rgb(28, 28, 33), 24)
+            setPadding(dp(20), dp(10), dp(24), dp(10))
+            minHeight = dp(48)
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(wrap, wrap).apply { topMargin = dp(8) }
             setOnClickListener { showScreen(Screen.HOME) }
         }
         // Every screen is a full-height column; only one is visible at a time.
@@ -339,22 +358,27 @@ class MainActivity : Activity() {
             }
         }
         dayView = text(20f, grey).apply { letterSpacing = 0.15f; gravity = Gravity.CENTER } // "LUNEDÌ 12 OTTOBRE"
-        weatherTopView = text(24f, grey).apply {
-            text = "–°"
-            gravity = Gravity.CENTER
+        weatherTopView = chip(text(24f, white).apply { text = "–°" }, Color.rgb(28, 28, 33)).apply {
             setOnClickListener { openWeatherScreen() }
         }
-        homeTimerView = text(26f, amber).apply {
-            gravity = Gravity.CENTER
+        homeTimerView = chip(text(26f, amber), Color.rgb(51, 41, 0)).apply {
             visibility = View.GONE
             setOnClickListener { showScreen(Screen.TIMERS) }
         }
-        homeMusicView = text(20f, grey).apply {
-            gravity = Gravity.CENTER
+        homeMusicView = chip(text(20f, white), Color.rgb(28, 28, 33)).apply {
             maxLines = 1
+            maxWidth = dp(420)
             ellipsize = android.text.TextUtils.TruncateAt.END
             visibility = View.GONE
             setOnClickListener { showScreen(Screen.MUSIC) }
+        }
+        // Weather, timer and music as separate, well spaced touch targets under the clock.
+        val chipRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            listOf(weatherTopView, homeTimerView, homeMusicView).forEach {
+                addView(it, LinearLayout.LayoutParams(wrap, wrap).apply { marginStart = dp(10); marginEnd = dp(10) })
+            }
         }
 
         // Hidden developer panel (long-press the clock): search field and shortcuts.
@@ -399,15 +423,13 @@ class MainActivity : Activity() {
             addView(openMeldButton)
         }
         val homePanel = panel(
-            dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel,
+            dayView, clockView, chipRow, debugPanel,
         ).apply {
             gravity = Gravity.CENTER
-            listOf(dayView, clockView, weatherTopView, homeTimerView, homeMusicView, debugPanel).forEach {
+            listOf(dayView, clockView, chipRow, debugPanel).forEach {
                 it.layoutParams = LinearLayout.LayoutParams(match, wrap)
             }
-            (weatherTopView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
-            (homeTimerView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
-            (homeMusicView.layoutParams as LinearLayout.LayoutParams).topMargin = dp(6)
+            (chipRow.layoutParams as LinearLayout.LayoutParams).topMargin = dp(20)
             (debugPanel.layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
             setPadding(dp(28), 0, dp(28), 0)
             visibility = View.VISIBLE
@@ -442,8 +464,8 @@ class MainActivity : Activity() {
         timerCancelView = text(24f, white).apply {
             text = "Annulla timer"
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.rgb(45, 45, 45))
-            setPadding(dp(28), dp(10), dp(28), dp(10))
+            surface(this, Color.rgb(51, 41, 0))
+            setPadding(dp(32), dp(14), dp(32), dp(14))
             setOnClickListener { cancelAllFromScreen() }
         }
         val timerBody = LinearLayout(this).apply {
