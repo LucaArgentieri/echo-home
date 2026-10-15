@@ -27,7 +27,7 @@ Language: user-facing strings and voice replies are **Italian**; code, comments 
 | V0.3 volume, time, timer, weather, TTS, wake phrases, base UI | Done in code and emulator |
 | V0.4 real-device optimisation (CPU/RAM/heat, 24–48 h, kiosk, boot, foreground service) | **In progress**: owner backed up the Fire OS partitions, flashed LineageOS and installed Meld (15 Oct 2026); Echo Home on the device and all measurements still to do |
 
-Known limits: wake word with music playing, real STT accuracy and real performance are untested (the emulator mic path is badly degraded). The wake words are **"Hey Jarvis" / "Hey Echo" / "Alexa"** ("Alexa": 20/33 synthetic clips, 4/110 false hits, mostly "Alessia"; per-keyword `:3.0 #0.05` in `keywords.txt`); a bare "Echo" is not detectable with the sherpa-onnx KWS models (0/10 in offline tests).
+Known limits: wake word with music playing, real STT accuracy and real performance are untested (the emulator mic path is badly degraded). The only active wake word is **"Alexa"** (on the real Echo mic "Hey Jarvis"/"Hey Echo" did not fire, so they were removed from `keywords.txt`; offline results for Alexa: 20/33 synthetic clips, 4/110 false hits, mostly "Alessia"; per-keyword `:3.0 #0.05` in `keywords.txt`); a bare "Echo" is not detectable with the sherpa-onnx KWS models (0/10 in offline tests).
 
 ## Architecture (all in `app/src/main/java/com/echohome/app/`)
 | File | Role |

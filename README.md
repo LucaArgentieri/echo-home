@@ -32,7 +32,7 @@ Il primo `./gradlew` scarica il wrapper Gradle (verificato con SHA-256). L'APK �
 ### 4. Primo utilizzo
 1. All'avvio l'app mostra orologio, data e meteo; in basso a sinistra compare «Meld non connesso» finché Meld non risponde.
 2. Concedi il permesso microfono quando richiesto (serve solo per la voce).
-3. Tocca l'indicatore `○` in basso a destra per parlare senza wake word; **pressione lunga** su `○` = attiva/disattiva la wake word «Hey Jarvis» / «Hey Echo» / «Alexa» (di default spenta).
+3. Tocca l'indicatore `○` in basso a destra per parlare senza wake word; **pressione lunga** su `○` = attiva/disattiva la wake word «Alexa» (di default spenta).
 4. Prova: «che ore sono», «timer cinque minuti», «che tempo fa domani», «metti i Radiohead».
 5. Pannello sviluppatore con campo di ricerca testuale: pressione lunga sull'orologio.
 
@@ -61,9 +61,9 @@ Il repository non include binari preconfezionati. Al primo `./gradlew ...`, lo s
 
 ## V0.2: pipeline vocale
 
-`Hey Jarvis` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
+`Alexa` → beep → VAD → STT locale → intent → Meld. Tutto in locale, senza rete.
 
-- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Hey Jarvis», «Hey Echo» e «Alexa»** sono attive insieme (una riga ciascuna in `keywords.txt`; punteggio 2.0, soglia 0.2; «Alexa» ha il suo punteggio 3.0 e soglia 0.05 sulla riga). «Alexa», su 33 voci sintetiche (3 frasi × 11 voci): 20 riconosciute, e 4 falsi positivi su 110 clip di altre parole («Alessia» è la più confondibile). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Di default OFF: il microfono si apre solo se la attivi (pressione lunga sull'indicatore `○`). Si ferma quando l'app non è in primo piano.
+- **Wake word**: sherpa-onnx keyword spotting (`assets/kws`, modello gigaspeech-3.3M int8). **«Alexa»** è l'unica attiva (sull'Echo reale «Hey Jarvis» e «Hey Echo» non scattavano; si possono riaggiungere in `keywords.txt`, una riga ciascuna; punteggio 2.0, soglia 0.2; «Alexa» ha il suo punteggio 3.0 e soglia 0.05 sulla riga). «Alexa», su 33 voci sintetiche (3 frasi × 11 voci): 20 riconosciute, e 4 falsi positivi su 110 clip di altre parole («Alessia» è la più confondibile). «Echo» da solo NON è rilevabile con questi modelli (0/10 nei test; il modello a fonemi 2/10 con falsi positivi). Di default OFF: il microfono si apre solo se la attivi (pressione lunga sull'indicatore `○`). Si ferma quando l'app non è in primo piano.
 - **VAD**: Silero v5 (`assets/silero-vad`). Fine frase dopo 0,7 s di silenzio; massimo 8 s; 5 s senza parlato = annulla.
 - **STT**: Whisper base int8 in italiano (`assets/whisper-base`), offline. Elabora solo la parte parlata.
 - **Intent**: `IntentParser.kt`, regex + tolleranza di 1 carattere su verbi e comandi brevi. Test: `./gradlew testDebugUnitTest`.
@@ -92,7 +92,7 @@ L'APK debug pesa circa 250 MB, quasi tutto per Whisper base.
 
 ## V0.3 (in corso)
 
-Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Hey Jarvis»/«Hey Echo»/«Alexa», UI base da smart display. Idee future: issue #1.
+Fatto: volume, ora, timer, risposte parlate, meteo, wake word «Alexa», UI base da smart display. Idee future: issue #1.
 
 - **Comandi**: `volume 40` / `alza il volume` / `più piano`, `che ore sono`, `timer dieci minuti` / `timer pasta 10 minuti` / `annulla il timer della pasta` / `annulla tutti i timer` / `quanto manca al timer` / `quanti timer ho`, `che tempo fa nei prossimi giorni` / `meteo della settimana`, `che tempo fa a Roma domani` (città in una lista fissa, offline), `un po' più forte` / `volume 35` (percentuale esatta), `che giorno è`, `muto` / `riattiva audio`, `mischia` / `non mischiare`, `ripeti brano` / `non ripetere`. Un tocco sull'indicatore mentre parla azzera la voce.
 - **TTS**: voce italiana locale (Piper «paola», sherpa-onnx). Risponde a ora, volume e timer, anche per i comandi scritti; non parla per i comandi musicali. Mentre parla il rilevatore di wake word è fermo e la musica riprende solo a frase finita.

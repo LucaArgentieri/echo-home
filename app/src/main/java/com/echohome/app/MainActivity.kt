@@ -138,7 +138,7 @@ class MainActivity : Activity() {
         }
     }
 
-    // Wake word ("Hey Jarvis") is opt-in: the mic is only open while this is on.
+    // Wake word ("Alexa") is opt-in: the mic is only open while this is on.
     private var wakeEnabled = false
     // Experimental: say the wake word while the assistant talks to cut it short. Off until tested on the Echo.
     private var bargeInEnabled = false
@@ -842,7 +842,7 @@ class MainActivity : Activity() {
         wakeEnabled = !wakeEnabled
         getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(PREF_WAKE, wakeEnabled).apply()
         renderAssistant()
-        statusView.text = if (wakeEnabled) "Wake word attiva: «Hey Jarvis», «Hey Echo», «Alexa»" else "Wake word disattivata"
+        statusView.text = if (wakeEnabled) "Wake word attiva: «Alexa»" else "Wake word disattivata"
         if (wakeEnabled) {
             if (hasMicPermission()) startWake() else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
         } else {
