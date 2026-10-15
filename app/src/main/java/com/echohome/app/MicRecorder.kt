@@ -17,7 +17,7 @@ import com.k2fsa.sherpa.onnx.VadModelConfig
 class MicRecorder(
     private val assets: AssetManager,
     private val maxSeconds: Int = 8,
-    private val noSpeechSeconds: Int = 5,
+    private val noSpeechSeconds: Int = 3,
     private val endSilenceSeconds: Float = 0.7f,
 ) {
     companion object {
@@ -50,10 +50,10 @@ class MicRecorder(
     val isRecording get() = recording
 
     @SuppressLint("MissingPermission")
-    fun start(handoff: WakeWordListener.Handoff? = null, onDone: (Result) -> Unit) {
+    fun start(handoff: WakeWordListener.Handoff? = null, muteMs: Int = 0, onDone: (Result) -> Unit) {
         if (recording) { handoff?.discard(); return }
         recording = true
-        Thread({ onDone(capture(handoff)) }, "mic-recorder").start()
+        Thread({ onDone(capture(handoff, muteMs)) }, "mic-recorder").start()
     }
 
     /** Manual stop (the "Fine" button): whatever speech was heard so far is used. */
@@ -79,7 +79,7 @@ class MicRecorder(
     }
 
     @SuppressLint("MissingPermission")
-    private fun capture(handoff: WakeWordListener.Handoff?): Result {
+    private fun capture(handoff: WakeWordListener.Handoff?, muteMs: Int): Result {
         val rate = SpeechToText.SAMPLE_RATE
         val chunk = ShortArray(rate / 10) // 100 ms
         val floats = FloatArray(chunk.size)
@@ -87,6 +87,7 @@ class MicRecorder(
         var peak = 0f
         // Raw copy of the utterance (RAM only, zeroed below): the VAD cuts a little too tight.
         val prefixLen = handoff?.prefix?.size ?: 0
+        var muteLeft = rate * muteMs / 1000
         val raw = FloatArray(prefixLen + rate * (maxSeconds + 1))
         handoff?.prefix?.copyInto(raw) // what was heard just before the wake word fired (wake word + start of the command)
         total = prefixLen
@@ -109,6 +110,12 @@ class MicRecorder(
                 while (recording) {
                     val n = record.read(chunk, 0, chunk.size)
                     if (n <= 0) { reason = "microfono interrotto"; break }
+                    // The "listening" cue plays through the speaker while the mic is open: blank it out.
+                    if (muteLeft > 0) {
+                        val blank = minOf(n, muteLeft)
+                        java.util.Arrays.fill(chunk, 0, blank, 0.toShort())
+                        muteLeft -= blank
+                    }
                     for (i in 0 until n) {
                         floats[i] = toFloat(chunk[i])
                         peak = maxOf(peak, kotlin.math.abs(chunk[i] / 32768f)) // raw level, for diagnostics

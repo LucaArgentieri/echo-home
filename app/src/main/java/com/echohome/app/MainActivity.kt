@@ -114,6 +114,7 @@ class MainActivity : Activity() {
     private lateinit var weatherTopView: TextView // current weather on Home
     private lateinit var assistantView: TextView
     private lateinit var glowBar: GlowBar
+    private val earcons = Earcons()
     private lateinit var debugPanel: LinearLayout
 
     private enum class AssistantState { IDLE, LISTENING, THINKING }
@@ -757,6 +758,7 @@ class MainActivity : Activity() {
             statusView.text = "Meld non connesso"
             return null
         }
+        if (fromVoice) earcons.play(if (intent != null) Earcons.Cue.UNDERSTOOD else Earcons.Cue.NOT_UNDERSTOOD)
         routeScreen(intent)
         when (intent) {
             EchoIntent.MusicPause -> controller?.pause()
@@ -923,16 +925,17 @@ class MainActivity : Activity() {
         setAssistant(AssistantState.LISTENING)
         val startRecording = {
             if (voiceBusy) {
-                recorder.start(handoff) { result -> mainHandler.post { onUtterance(result) } }
+                recorder.start(handoff, muteMs = if (handoff != null) 220 else 0) { result -> mainHandler.post { onUtterance(result) } }
             } else {
                 handoff?.discard()
             }
             Unit
         }
-        if (fromWake && handoff == null) { // with a hand-over we record at once: a beep would be heard
-            beep()
-            mainHandler.postDelayed(startRecording, BEEP_SETTLE_MS) // do not record our own beep
+        if (fromWake && handoff == null) {
+            earcons.play(Earcons.Cue.LISTENING)
+            mainHandler.postDelayed(startRecording, BEEP_SETTLE_MS) // do not record our own cue
         } else {
+            if (fromWake) earcons.play(Earcons.Cue.LISTENING) // recorded over: the recorder mutes it
             startRecording()
         }
     }
@@ -970,6 +973,7 @@ class MainActivity : Activity() {
         val samples = result.speech
         if (samples.isEmpty()) {
             statusView.text = "Nessun parlato rilevato (${result.reason}, ${"%.1f".format(result.totalSeconds)}s, picco ${"%.2f".format(result.peak)})"
+            earcons.play(Earcons.Cue.NOT_UNDERSTOOD)
             endSession(null)
             return
         }
@@ -1001,6 +1005,7 @@ class MainActivity : Activity() {
             mainHandler.post {
                 queryInput.setText(text)
                 statusView.text = if (text.isBlank()) "Nessun parlato rilevato ($audioInfo, STT $ms ms)" else "“$text” ($audioInfo, STT $ms ms)"
+                if (text.isBlank()) earcons.play(Earcons.Cue.NOT_UNDERSTOOD)
                 val executed = if (text.isNotBlank()) runCommand(text, fromVoice = true, detail = "$audioInfo, STT $ms ms") else null
                 endSession(executed)
             }
