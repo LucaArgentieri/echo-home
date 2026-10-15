@@ -127,6 +127,23 @@ object IntentParser {
         "precedente" to EchoIntent.MusicPrevious,
     )
 
+    // Short questions heard slightly wrong ("che oris sono", "cheore sono"): compared without spaces or accents.
+    private val fuzzyPhrases = listOf(
+        "che ore sono" to EchoIntent.Time,
+        "che ora e" to EchoIntent.Time,
+        "dimmi l'ora" to EchoIntent.Time,
+        "che giorno e" to EchoIntent.Date,
+        "che giorno e oggi" to EchoIntent.Date,
+        "che data e" to EchoIntent.Date,
+        "che tempo fa" to EchoIntent.WeatherNow,
+        "che tempo fa domani" to EchoIntent.WeatherTomorrow,
+        "che tempo fa oggi" to EchoIntent.WeatherNow,
+    ).map { squash(it.first) to it.second }
+
+    private fun squash(text: String) =
+        java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "").replace(Regex("[^a-z]"), "")
+
     // Verbs the recogniser tends to garble, repaired when the first word is within 1 edit (5+ letters only).
     private val commandVerbs = listOf(
         "abbassa", "aumenta", "diminuisci", "annulla", "cancella", "imposta", "riprendi", "mostra",
@@ -233,6 +250,11 @@ object IntentParser {
                 ?.groupValues?.get(1)?.trim()
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { EchoIntent.MusicSearch(it) }
+        }
+        // A whole short question within ~1 edit per 5 letters of a known one.
+        val flat = squash(cleaned)
+        if (words.size in 2..5 && flat.length >= 8) {
+            fuzzyPhrases.firstOrNull { editDistance(flat, it.first) <= maxOf(1, it.first.length / 5) }?.let { return it.second }
         }
         return null
     }

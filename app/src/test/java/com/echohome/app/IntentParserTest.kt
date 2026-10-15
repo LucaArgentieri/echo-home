@@ -244,4 +244,19 @@ class IntentParserTest {
         assertEquals(EchoIntent.TimerCreate(600), IntentParser.parse("imposta un taimer di 10 minuti"))
         assertEquals(null, IntentParser.parse("lasciatemi cantare")) // not a command, no false repair
     }
+
+    @Test
+    fun `garbled short questions are repaired`() {
+        assertEquals(EchoIntent.Time, IntentParser.parse("che oris sono?"))
+        assertEquals(EchoIntent.Time, IntentParser.parse("che orisono"))
+        assertEquals(EchoIntent.Date, IntentParser.parse("che giorno e"))
+        assertEquals(EchoIntent.Date, IntentParser.parse("che gorno è"))
+        assertEquals(EchoIntent.WeatherNow, IntentParser.parse("che tempo fa?"))
+    }
+
+    @Test
+    fun `unrelated phrases are not repaired`() {
+        assertNull(IntentParser.parse("che bella giornata oggi"))
+        assertNull(IntentParser.parse("che cosa sono"))
+    }
 }

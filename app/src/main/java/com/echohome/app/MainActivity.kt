@@ -752,20 +752,20 @@ class MainActivity : Activity() {
             EchoIntent.MusicPause -> controller?.pause()
             EchoIntent.MusicResume -> controller?.play()
             EchoIntent.MusicNext -> controller?.let {
-                if (it.hasNextMediaItem()) { it.seekToNextMediaItem(); reply(Replies.NEXT) } else reply(Replies.NO_NEXT)
+                if (it.hasNextMediaItem()) { it.seekToNextMediaItem(); note(Replies.NEXT) } else note(Replies.NO_NEXT)
             }
             EchoIntent.MusicPrevious -> controller?.let {
                 it.seekToPreviousMediaItem()
-                reply(Replies.PREVIOUS)
+                note(Replies.PREVIOUS)
             }
             is EchoIntent.MusicSearch -> playSearch(intent.query)
             is EchoIntent.MusicShuffle -> {
                 controller?.shuffleModeEnabled = intent.enabled
-                reply(Replies.shuffle(intent.enabled))
+                note(Replies.shuffle(intent.enabled))
             }
             is EchoIntent.MusicRepeat -> {
                 controller?.repeatMode = if (intent.enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-                reply(Replies.repeat(intent.enabled))
+                note(Replies.repeat(intent.enabled))
             }
             is EchoIntent.VolumeSet -> {
                 if (intent.percent == 0 && volumePercent() > 0) volumeBeforeMute = volumePercent()
@@ -1067,13 +1067,18 @@ class MainActivity : Activity() {
         if (canTrim()) {
             if (volumeBeforeDuck != null) volumeBeforeDuck = trim else controller?.volume = trim // ducked: restored later
         }
-        reply(Replies.volume(volumePercent()))
+        note(Replies.volume(volumePercent()))
     }
 
     // ---- Spoken answers -----------------------------------------------------
 
     private var speakingCount = 0
     private var afterSpeech: (() -> Unit)? = null
+
+    /** Shows [text] only: confirmations of actions are not worth seconds of speech on the Echo's slow CPU. */
+    private fun note(text: String) {
+        statusView.text = text
+    }
 
     /** Shows [text] and says it out loud. */
     private fun reply(text: String) {
