@@ -30,6 +30,11 @@ class TextToSpeech(private val context: Context) {
     private var engine: OfflineTts? = null
     @Volatile private var track: AudioTrack? = null
 
+    /** Loads the voice in the background so the first answer does not pay for it. */
+    fun warmUp() {
+        executor.execute { runCatching { if (engine == null) engine = createEngine() } }
+    }
+
     /** Speaks [text]; [onDone] runs on the main thread when the audio has finished (or failed). */
     fun speak(text: String, onDone: () -> Unit) {
         executor.execute {
@@ -73,7 +78,7 @@ class TextToSpeech(private val context: Context) {
         }
         val model = OfflineTtsModelConfig().apply {
             this.vits = vits
-            numThreads = 2
+            numThreads = 4
         }
         return OfflineTts(context.assets, OfflineTtsConfig().apply { this.model = model })
     }

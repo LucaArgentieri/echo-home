@@ -30,7 +30,7 @@ class SpeechToText(assets: AssetManager) {
         val model = OfflineModelConfig().apply {
             this.whisper = whisper
             tokens = "$MODEL_DIR/base-tokens.txt"
-            numThreads = 2
+            numThreads = 4
         }
         recognizer = OfflineRecognizer(assets, OfflineRecognizerConfig().apply { modelConfig = model })
     }

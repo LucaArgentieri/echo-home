@@ -67,7 +67,6 @@ class MainActivity : Activity() {
         private const val DEEP_NIGHT_BRIGHTNESS = 0.01f // night and idle: the clock is only just visible
         private const val IDLE_BRIGHTNESS = 0.3f // daytime, after DIM_AFTER_MS without activity
         private const val DIM_AFTER_MS = 3 * 60 * 1000L
-        private const val STT_IDLE_RELEASE_MS = 2 * 60 * 1000L // free Whisper's RAM when unused
         private const val COVER_MAX_PX = 400 // the cover view is 170dp
         private const val STATUS_MS = 6_000L
         private const val MUSIC_SCREEN_MS = 30_000L
@@ -149,13 +148,7 @@ class MainActivity : Activity() {
     private var sessionWasPlaying = false   // music was paused for the session and may need resuming
     private val sttExecutor = Executors.newSingleThreadExecutor()
 
-    // Whisper holds ~100+ MB; drop it after a quiet spell and reload on the next command.
-    private val releaseStt = Runnable { sttExecutor.execute { stt?.release(); stt = null } }
-
-    private fun scheduleSttRelease() {
-        mainHandler.removeCallbacks(releaseStt)
-        mainHandler.postDelayed(releaseStt, STT_IDLE_RELEASE_MS)
-    }
+    // Whisper loads in ~15 s on the Echo, so it is prepared at start and kept (never on the command path).
     private var stt: SpeechToText? = null
 
     private val reconnectRunnable = Runnable { connectToMeld() }
@@ -219,6 +212,8 @@ class MainActivity : Activity() {
         recorder = MicRecorder(assets)
         wakeListener = WakeWordListener(assets)
         tts = TextToSpeech(applicationContext)
+        tts.warmUp()
+        sttExecutor.execute { if (stt == null) runCatching { stt = SpeechToText(assets) } }
         kitchenTimer = KitchenTimer(getSharedPreferences(PREFS, MODE_PRIVATE), mainHandler) { startRinging(it) }
         wakeEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_WAKE, false)
         bargeInEnabled = getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(PREF_BARGE_IN, false)
@@ -970,9 +965,13 @@ class MainActivity : Activity() {
         sttExecutor.execute {
             val started = System.nanoTime()
             val text = try {
+                val coldStart = stt == null
                 val engine = stt ?: SpeechToText(assets).also { stt = it }
-                scheduleSttRelease()
-                engine.transcribe(samples)
+                val loadedMs = (System.nanoTime() - started) / 1_000_000
+                val decoded = engine.transcribe(samples)
+                // Timings only, never the text or the audio.
+                android.util.Log.i("EchoHome", "stt: cold=$coldStart load=${loadedMs}ms total=${(System.nanoTime() - started) / 1_000_000}ms audio=${speechSec}s")
+                decoded
             } catch (t: Throwable) {
                 mainHandler.post {
                     statusView.text = "Errore STT: ${t.message}"
